@@ -1,25 +1,34 @@
 import {
     createConnection,
     TextDocuments,
-    Diagnostic,
-    DiagnosticSeverity,
     ProposedFeatures,
     InitializeParams,
     DidChangeConfigurationNotification,
     CompletionItem,
     CompletionItemKind,
-    TextDocumentPositionParams,
     TextDocumentSyncKind,
-    InitializeResult
+    InitializeResult,
+    CompletionParams,
+    integer,
+    WorkspaceFolder,
 } from 'vscode-languageserver/node';
-
 import {
     TextDocument
 } from 'vscode-languageserver-textdocument';
+import { Node, NodeType, QxDatabase } from "./db";
+import { promises } from 'fs';
 
+async function initDb(): Promise<void> {
+    let projDir = await getQxProjDir();
+    if (projDir)
+    codeDb.initialize(projDir);
+}
+
+const codeDb = new QxDatabase();
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
+
 
 // Create a simple text document manager.
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -27,6 +36,12 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+async function getDocumentWorkspaceFolder(fileUri: string): Promise<string | undefined> {
+  let folders = await connection.workspace.getWorkspaceFolders()
+return folders?.map((folder) => folder.uri)
+    .filter((fsPath) => fileUri?.startsWith(fsPath))[0];
+}
 
 connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
@@ -50,7 +65,9 @@ connection.onInitialize((params: InitializeParams) => {
             textDocumentSync: TextDocumentSyncKind.Incremental,
             // Tell the client that this server supports code completion.
             completionProvider: {
-                resolveProvider: true
+                resolveProvider: true,
+                triggerCharacters: ["."]
+
             }
         }
     };
@@ -74,6 +91,7 @@ connection.onInitialized(() => {
             connection.console.log('Workspace folder change event received.');
         });
     }
+    initDb();
 });
 
 // The example settings
@@ -90,6 +108,8 @@ let globalSettings: ExampleSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
+
+
 connection.onDidChangeConfiguration(change => {
     if (hasConfigurationCapability) {
         // Reset all cached document settings
@@ -101,7 +121,6 @@ connection.onDidChangeConfiguration(change => {
     }
 
     // Revalidate all open text documents
-    documents.all().forEach(validateTextDocument);
 });
 
 function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
@@ -124,82 +143,89 @@ documents.onDidClose(e => {
     documentSettings.delete(e.document.uri);
 });
 
-// The content of a text document has changed. This event is emitted
-// when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
-    validateTextDocument(change.document);
-});
 
-async function validateTextDocument(textDocument: TextDocument): Promise<void> {
-    // In this simple example we get the settings for every validate run.
-    const settings = await getDocumentSettings(textDocument.uri);
-
-    // The validator creates diagnostics for all uppercase words length 2 and more
-    const text = textDocument.getText();
-    const pattern = /\b[A-Z]{2,}\b/g;
-    let m: RegExpExecArray | null;
-
-    let problems = 0;
-    const diagnostics: Diagnostic[] = [];
-    while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
-        problems++;
-        const diagnostic: Diagnostic = {
-            severity: DiagnosticSeverity.Warning,
-            range: {
-                start: textDocument.positionAt(m.index),
-                end: textDocument.positionAt(m.index + m[0].length)
-            },
-            message: `${m[0]} is all uppercase.`,
-            source: 'ex'
-        };
-        if (hasDiagnosticRelatedInformationCapability) {
-            diagnostic.relatedInformation = [
-                {
-                    location: {
-                        uri: textDocument.uri,
-                        range: Object.assign({}, diagnostic.range)
-                    },
-                    message: 'Spelling matters'
-                },
-                {
-                    location: {
-                        uri: textDocument.uri,
-                        range: Object.assign({}, diagnostic.range)
-                    },
-                    message: 'Particularly for names'
-                }
-            ];
+/**
+ * 
+ * @param source Source of file
+ * @param index Zero-based character index on where to find the expression
+ * @returns A member chain (i.e. thing1.thing2.thing3, ...) before the index if it exists, null if not.
+ * 
+ * This function is used to get the expression for which to show the autocomplete suggestions.
+ */
+function getMemberChainBefore(source: string, index: integer): string | null {
+    let identifier = "[A-Za-z][A-Za-z_0-9]*"; //!todo underscore
+    let memberChainRegex = new RegExp(`(${identifier}(\\.${identifier})*)(\\(.*\\))?\\.(${identifier})?`, "g");
+    while (memberChainRegex.lastIndex <= index) {
+        let matches : RegExpExecArray | null = memberChainRegex.exec(source);
+        if (memberChainRegex.lastIndex == index) {
+            return matches && matches[1];
         }
-        diagnostics.push(diagnostic);
     }
-
-    // Send the computed diagnostics to VSCode.
-    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+    return null
 }
 
-connection.onDidChangeWatchedFiles(_change => {
-    // Monitored files have change in VSCode
-    connection.console.log('We received an file change event');
-});
+/**
+ * 
+ * @param uri uri
+ * @returns Converts uri to absolute file system path
+ */
+function uriToPath(uri: string): string {
+    return uri.substring("file://".length);
+}
 
-// This handler provides the initial list of the completion items.
+/**
+ * @returns The workspace folder with the Qooxdoo source. This folder must contain compile.json. Returns null if no such folder exists
+ */
+async function getQxProjDir(): Promise<string | null> {
+    let folders = await connection.workspace.getWorkspaceFolders();
+    if (!folders) return null;
+    for(var f = 0; f < folders?.length; f++) {
+        let folder: WorkspaceFolder = folders[f];
+        let path = uriToPath(folder.uri);
+        let files = await promises.readdir(path);
+        if (files.indexOf("compile.json") >= 0) {
+            return folder.uri;
+        }
+    }
+    return null;
+}
+
+
+
+connection.onDidSaveTextDocument(initDb);
+
+function toCompletionItemKind(nodeType: NodeType): CompletionItemKind {
+    switch (nodeType) {
+        case NodeType.CLASS: return CompletionItemKind.Class;
+        case NodeType.STATIC_METHOD: case NodeType.METHOD: return CompletionItemKind.Method;
+        case NodeType.MEMBER_VARIABLE:return CompletionItemKind.Variable;
+        case NodeType.PACKAGE:return CompletionItemKind.Module;
+        default: return CompletionItemKind.Text;
+    }
+}
+
 connection.onCompletion(
-    (_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-        // The pass parameter contains the position of the text document in
-        // which code complete got requested. For the example we ignore this
-        // info and always provide the same completion items.
-        return [
-            {
-                label: 'TypeScript',
-                kind: CompletionItemKind.Text,
-                data: 1
-            },
-            {
-                label: 'JavaScript',
-                kind: CompletionItemKind.Text,
-                data: 2
-            }
-        ];
+    async (completionInfo: CompletionParams): Promise<CompletionItem[]> => {
+        let document = documents.get(completionInfo.textDocument.uri);
+        if (!document) return [];
+
+        let caretCharacterIndex = document.offsetAt(completionInfo.position);
+        let source = document.getText();
+
+        let memberChain = getMemberChainBefore(source, caretCharacterIndex);
+        if (memberChain) {
+            if (codeDb.containsNode(memberChain)) {
+                return codeDb.getNode(memberChain).children?.map(
+                    (child: Node): CompletionItem => {
+                        return { 
+                            label: child.name ?? "",
+                kind: toCompletionItemKind(child.type ?? NodeType.CLASS), 
+                    }}
+                ) ?? [];
+            } else return []
+        } else {
+            return codeDb.classnames.map(classname => {return {label:classname, kind: CompletionItemKind.Class};});
+        }
     }
 );
 
