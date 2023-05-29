@@ -4,3 +4,8 @@ node_modules
 client/server
 .vscode-test
 package-lock.json
+.vscode/settings.json
+notes/notes.txt
+notes/todo.txt
+server/src/extra.txt
+server/src/ast.json
