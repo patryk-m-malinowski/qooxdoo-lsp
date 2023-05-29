@@ -18,10 +18,17 @@ import {
 import { Node, NodeType, QxDatabase } from "./db";
 import { promises } from 'fs';
 
+
+const regexes = {};
+
+const RGX_IDENTIFIER =  "[A-Za-z][A-Za-z_0-9]*";
+const RGX_MEMBER_CHAIN = `${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*`;
+
+
 async function initDb(): Promise<void> {
     let projDir = await getQxProjDir();
     if (projDir)
-    codeDb.initialize(projDir);
+        codeDb.initialize(projDir);
 }
 
 const codeDb = new QxDatabase();
@@ -108,7 +115,20 @@ let globalSettings: ExampleSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
+function getObjectDataType(source: string, varName: string, location: integer) {
+    let assignmentRegex = new RegExp(`${varName}\\s*=\\s*new\\s+(${RGX_MEMBER_CHAIN})`);
+    let matches: RegExpMatchArray | null = null;
+    let previousLastIndex: integer = -1;
+    while(assignmentRegex.lastIndex <= location) {
+        matches = assignmentRegex.exec(source);
+        if (!matches) break;
+        if (matches && assignmentRegex.lastIndex == previousLastIndex)
+            break;
+        previousLastIndex = assignmentRegex.lastIndex;
+    }
 
+    return matches && matches[1];
+}
 
 connection.onDidChangeConfiguration(change => {
     if (hasConfigurationCapability) {
@@ -153,10 +173,9 @@ documents.onDidClose(e => {
  * This function is used to get the expression for which to show the autocomplete suggestions.
  */
 function getMemberChainBefore(source: string, index: integer): string | null {
-    let identifier = "[A-Za-z][A-Za-z_0-9]*"; //!todo underscore
-    let memberChainRegex = new RegExp(`(${identifier}(\\.${identifier})*)(\\(.*\\))?\\.(${identifier})?`, "g");
+    let memberChainRegex = new RegExp(`(${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*)(\\(.*\\))?\\.(${RGX_IDENTIFIER})?`, "g");
     while (memberChainRegex.lastIndex <= index) {
-        let matches : RegExpExecArray | null = memberChainRegex.exec(source);
+        let matches: RegExpExecArray | null = memberChainRegex.exec(source);
         if (memberChainRegex.lastIndex == index) {
             return matches && matches[1];
         }
@@ -179,7 +198,7 @@ function uriToPath(uri: string): string {
 async function getQxProjDir(): Promise<string | null> {
     let folders = await connection.workspace.getWorkspaceFolders();
     if (!folders) return null;
-    for(var f = 0; f < folders?.length; f++) {
+    for (var f = 0; f < folders?.length; f++) {
         let folder: WorkspaceFolder = folders[f];
         let path = uriToPath(folder.uri);
         let files = await promises.readdir(path);
@@ -198,8 +217,8 @@ function toCompletionItemKind(nodeType: NodeType): CompletionItemKind {
     switch (nodeType) {
         case NodeType.CLASS: return CompletionItemKind.Class;
         case NodeType.STATIC_METHOD: case NodeType.METHOD: return CompletionItemKind.Method;
-        case NodeType.MEMBER_VARIABLE:return CompletionItemKind.Variable;
-        case NodeType.PACKAGE:return CompletionItemKind.Module;
+        case NodeType.MEMBER_VARIABLE: return CompletionItemKind.Variable;
+        case NodeType.PACKAGE: return CompletionItemKind.Module;
         default: return CompletionItemKind.Text;
     }
 }
@@ -219,12 +238,26 @@ connection.onCompletion(
                     (child: Node): CompletionItem => {
                         return { 
                             label: child.name ?? "",
-                kind: toCompletionItemKind(child.type ?? NodeType.CLASS), 
+                            kind: toCompletionItemKind(child.type ?? NodeType.CLASS), 
                     }}
                 ) ?? [];
-            } else return []
+            } else if (new RegExp(RGX_IDENTIFIER).test(memberChain)) {
+                let dataType = getObjectDataType(source, memberChain, caretCharacterIndex);
+                if ( dataType && codeDb.containsNode(dataType)) {
+                    return codeDb.getNode(dataType).children?.map(
+                        (child: Node): CompletionItem => {
+                            return {
+                                label: child.name ?? "",
+                                kind: toCompletionItemKind(child.type ?? NodeType.CLASS),
+                            }
+                        }
+                    ) ?? [];
+
+                }
+                return [];
+            } else return [];
         } else {
-            return codeDb.classnames.map(classname => {return {label:classname, kind: CompletionItemKind.Class};});
+            return codeDb.classnames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
         }
     }
 );
