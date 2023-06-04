@@ -203,7 +203,7 @@ async function getQxProjDir(): Promise<string | null> {
         let path = uriToPath(folder.uri);
         let files = await promises.readdir(path);
         if (files.indexOf("compile.json") >= 0) {
-            return folder.uri;
+            return uriToPath(folder.uri);
         }
     }
     return null;

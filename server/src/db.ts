@@ -1,5 +1,6 @@
 import fs = require('fs/promises');
 import glob = require('glob');
+import path = require("path")
 
 export class Node {
 	name!: string | null;
@@ -69,7 +70,8 @@ export class QxDatabase {
 	async initialize(root: string): Promise<void> {
 
 		this.classnames = [];
-		let allFiles: string[] = glob.globSync("**/*.json", { absolute: true, cwd: root });
+    this.root_ = new Node(null, null);
+		let allFiles: string[] = glob.globSync("**/*.json", { absolute: true, cwd: path.join(root, "compiled/source/transpiled") });
 		await Promise.all(
 			allFiles.map(file =>
 				// this._insertNode(nodePath, _getNodeFromAst(parse(file)));
