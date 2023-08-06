@@ -1,14 +1,14 @@
 {
   "name": "qooxdoo-lsp",
   "description": "A language server for qooxdoo framework",
-  "author": "Dmitrii Zolotov",
+  "author": "Patryk Malinowski",
   "license": "MIT",
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/goldim/qooxdoo-lsp"
+    "url": "https://github.com/p9malino26/qooxdoo-lsp"
   },
-  "publisher": "goldim",
+  "publisher": "pamal",
   "categories": [],
   "keywords": [
     "lsp",

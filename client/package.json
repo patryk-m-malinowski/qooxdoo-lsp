@@ -1,13 +1,13 @@
 {
     "name": "qooxdoo-lsp-client",
     "description": "VSCode part of a language server",
-    "author": "Dmitrii Zolotov (goldim) zolotovdy@yandex.ru",
+    "author": "Patryk Malinowski",
     "license": "MIT",
     "version": "0.1.0",
-    "publisher": "goldim",
+    "publisher": "pamal",
     "repository": {
         "type": "git",
-        "url": "https://github.com/goldim/qooxdoo-lsp"
+        "url": "https://github.com/p9malino26/qooxdoo-lsp"
     },
     "engines": {
         "vscode": "^1.63.0"
