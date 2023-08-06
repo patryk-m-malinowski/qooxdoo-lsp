@@ -11,13 +11,16 @@ import {
     CompletionParams,
     integer,
     WorkspaceFolder,
+    DidChangeWatchedFilesNotification,
+    DidChangeWatchedFilesParams,
+    FileEvent,
+    FileChangeType,
 } from 'vscode-languageserver/node';
 import {
     TextDocument
 } from 'vscode-languageserver-textdocument';
 import { Node, NodeType, QxDatabase } from "./db";
 import { promises } from 'fs';
-
 
 const regexes = {};
 
@@ -39,7 +42,6 @@ const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
-
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
@@ -49,6 +51,7 @@ async function getDocumentWorkspaceFolder(fileUri: string): Promise<string | und
 return folders?.map((folder) => folder.uri)
     .filter((fsPath) => fileUri?.startsWith(fsPath))[0];
 }
+
 
 connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
@@ -92,6 +95,7 @@ connection.onInitialized(() => {
     if (hasConfigurationCapability) {
         // Register for all configuration changes.
         connection.client.register(DidChangeConfigurationNotification.type, undefined);
+        connection.client.register(DidChangeWatchedFilesNotification.type, undefined);
     }
     if (hasWorkspaceFolderCapability) {
         connection.workspace.onDidChangeWorkspaceFolders(_event => {
@@ -129,6 +133,13 @@ function getObjectDataType(source: string, varName: string, location: integer) {
 
     return matches && matches[1];
 }
+
+connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
+    params.changes.forEach((change: FileEvent) => {
+        if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
+            codeDb.readFile(uriToPath(change.uri));
+    })
+})
 
 connection.onDidChangeConfiguration(change => {
     if (hasConfigurationCapability) {
