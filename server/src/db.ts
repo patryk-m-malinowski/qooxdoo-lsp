@@ -1,5 +1,6 @@
 import fs = require('fs/promises');
 import glob = require('glob');
+import path = require("path")
 
 export class Node {
 	name!: string | null;
@@ -69,7 +70,8 @@ export class QxDatabase {
 	async initialize(root: string): Promise<void> {
 
 		this.classnames = [];
-		let allFiles: string[] = glob.globSync("**/*.json", { absolute: true, cwd: root });
+    this.root_ = new Node(null, null);
+		let allFiles: string[] = glob.globSync("**/*.json", { absolute: true, cwd: path.join(root, "compiled/source/transpiled") });
 		await Promise.all(
 			allFiles.map(file =>
 				// this._insertNode(nodePath, _getNodeFromAst(parse(file)));
@@ -97,25 +99,28 @@ export class QxDatabase {
 		this.classnames.push(className);
 		let node = this.getNode(className);
 
-		if (structure.members) {
-			Object.keys(structure.members).forEach(memberName => {
-				let type = null;
-				let member = structure.members[memberName];
-				switch (member.type) {
-					case "function":
-						type = NodeType.METHOD;
-						break;
-					case "variable":
-						type = NodeType.MEMBER_VARIABLE;
-						break;
-					default:
-						type = NodeType.METHOD;
-				}
-				let child: Node = new Node(memberName, type);
-				if (!node.children) node.children = [];
-				node.children.push(child);
-			})
-		}
+    let addMember = (memberName:string, member: any) => {
+      let type = null;
+      switch (member.type) {
+        case "function":
+          type = NodeType.METHOD;
+          break;
+        case "variable":
+          type = NodeType.MEMBER_VARIABLE;
+          break;
+        default:
+          type = NodeType.METHOD;
+      }
+      let child: Node = new Node(memberName, type);
+      if (!node.children) node.children = [];
+      node.children.push(child);
+    }
+        if (structure.members) {
+            Object.keys(structure.members).forEach(memberName => addMember(memberName, structure.members[memberName]));
+        }
+        if (structure.statics) {
+            Object.keys(structure.statics).forEach(memberName => addMember(memberName, structure.statics[memberName]));
+        }
 	}
 
 	getRoot(): Node {
