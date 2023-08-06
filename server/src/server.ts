@@ -178,7 +178,7 @@ function getMemberChainBefore(source: string, index: integer): string | null {
         let matches: RegExpExecArray | null = memberChainRegex.exec(source);
         if (memberChainRegex.lastIndex == index) {
             return matches && matches[1];
-        }
+        } else if (memberChainRegex.lastIndex == 0) return null;
     }
     return null
 }
