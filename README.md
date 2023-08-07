@@ -1,5 +1,5 @@
 # qooxdoo-lsp
-Language Server Protocol implementation for Qooxdoo framework.
+Language Server Protocol implementation for Qooxdoo framework for Visual Studio Code.
 Project currently in Alpha, so please don't expect for everything to work properly. Use at own risk.
 
 What works:
@@ -16,7 +16,7 @@ What doesn't work:
 - Finding references
 
 # Usage
-- Please find the VSIX file for the latest release in the Release section
+- Please find the VSIX file for the latest release in the Releases section and install it as a VSCode extension.
 - Your Qooxdoo project is allowed to have multiple workspaces, but at least one of the workspaces must contain the "compiled/source/transpiled" directory.
 
 Contributions welcome.
