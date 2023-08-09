@@ -96,25 +96,25 @@ export class QxDatabase {
 		let structure = JSON.parse(source);
 		let className = structure.className;
 		if (!className) return;
-		this.classnames.push(className);
+		if (!this.classnames.indexOf(className))
+			this.classnames.push(className);
 		let node = this.getNode(className);
-
-    let addMember = (memberName:string, member: any) => {
-      let type = null;
-      switch (member.type) {
-        case "function":
-          type = NodeType.METHOD;
-          break;
-        case "variable":
-          type = NodeType.MEMBER_VARIABLE;
-          break;
-        default:
-          type = NodeType.METHOD;
-      }
-      let child: Node = new Node(memberName, type);
-      if (!node.children) node.children = [];
-      node.children.push(child);
-    }
+		node.children = [];
+		let addMember = (memberName:string, member: any) => {
+			let type = null;
+			switch (member.type) {
+				case "function":
+				type = NodeType.METHOD;
+				break;
+				case "variable":
+				type = NodeType.MEMBER_VARIABLE;
+				break;
+				default:
+				type = NodeType.METHOD;
+			}
+			let child: Node = new Node(memberName, type);
+			(node.children as Node[]).push(child);
+		}
         if (structure.members) {
             Object.keys(structure.members).forEach(memberName => addMember(memberName, structure.members[memberName]));
         }
