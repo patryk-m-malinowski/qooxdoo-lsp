@@ -36,7 +36,7 @@ export function activate(context: ExtensionContext) {
         documentSelector: [{ scheme: 'file', language: 'javascript' }],
         synchronize: {
             // Notify the server about file changes to '.clientrc files contained in the workspace
-            fileEvents: [workspace.createFileSystemWatcher('**/compiled/source/transpiled/**/*.json'), workspace.createFileSystemWatcher('**/.clientrc')]
+            fileEvents: [workspace.createFileSystemWatcher('**/compiled/*/transpiled/**/*.json'), workspace.createFileSystemWatcher('**/.clientrc')]
         }
     };
 

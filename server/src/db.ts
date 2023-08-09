@@ -70,8 +70,8 @@ export class QxDatabase {
 	async initialize(root: string): Promise<void> {
 
 		this.classnames = [];
-    this.root_ = new Node(null, null);
-		let allFiles: string[] = glob.globSync("**/*.json", { absolute: true, cwd: path.join(root, "compiled/source/transpiled") });
+        this.root_ = new Node(null, null);
+		let allFiles: string[] = glob.globSync('**/compiled/*/transpiled/**/*.json', { absolute: true, cwd: path.join(root) });
 		await Promise.all(
 			allFiles.map(file =>
 				// this._insertNode(nodePath, _getNodeFromAst(parse(file)));
@@ -96,7 +96,7 @@ export class QxDatabase {
 		let structure = JSON.parse(source);
 		let className = structure.className;
 		if (!className) return;
-		if (!this.classnames.indexOf(className))
+		if (this.classnames.indexOf(className) <= 0)
 			this.classnames.push(className);
 		let node = this.getNode(className);
 		node.children = [];
