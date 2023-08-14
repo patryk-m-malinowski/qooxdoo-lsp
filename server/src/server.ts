@@ -22,11 +22,9 @@ import {
 import { Node, NodeType, QxDatabase } from "./db";
 import { promises } from 'fs';
 
-const regexes = {};
-
-const RGX_IDENTIFIER =  "[A-Za-z][A-Za-z_0-9]*";
+const RGX_IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
 const RGX_MEMBER_CHAIN = `${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*`;
-
+const RGX_CLASSDEF = /qx\.Class\.define\("(.+?)"/;
 
 async function initDb(): Promise<void> {
     let projDir = await getQxProjDir();
@@ -47,9 +45,9 @@ let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
 async function getDocumentWorkspaceFolder(fileUri: string): Promise<string | undefined> {
-  let folders = await connection.workspace.getWorkspaceFolders()
-return folders?.map((folder) => folder.uri)
-    .filter((fsPath) => fileUri?.startsWith(fsPath))[0];
+    let folders = await connection.workspace.getWorkspaceFolders()
+    return folders?.map((folder) => folder.uri)
+        .filter((fsPath) => fileUri?.startsWith(fsPath))[0];
 }
 
 
@@ -123,7 +121,7 @@ function getObjectDataType(source: string, varName: string, location: integer) {
     let assignmentRegex = new RegExp(`${varName}\\s*=\\s*new\\s+(${RGX_MEMBER_CHAIN})`);
     let matches: RegExpMatchArray | null = null;
     let previousLastIndex: integer = -1;
-    while(assignmentRegex.lastIndex <= location) {
+    while (assignmentRegex.lastIndex <= location) {
         matches = assignmentRegex.exec(source);
         if (!matches) break;
         if (matches && assignmentRegex.lastIndex == previousLastIndex)
@@ -236,37 +234,41 @@ function toCompletionItemKind(nodeType: NodeType): CompletionItemKind {
 
 connection.onCompletion(
     async (completionInfo: CompletionParams): Promise<CompletionItem[]> => {
-        let document = documents.get(completionInfo.textDocument.uri);
-        if (!document) return [];
+        let document: TextDocument = documents.get(completionInfo.textDocument.uri) as TextDocument;
 
         let caretCharacterIndex = document.offsetAt(completionInfo.position);
         let source = document.getText();
 
         let memberChain = getMemberChainBefore(source, caretCharacterIndex);
+
+        const toCompletionItem = (child: Node): CompletionItem => {
+            return {
+                label: child.name ?? "",
+                kind: toCompletionItemKind(child.type ?? NodeType.CLASS),
+            }
+        }
         if (memberChain) {
             if (codeDb.containsNode(memberChain)) {
                 return codeDb.getNode(memberChain).children?.map(
-                    (child: Node): CompletionItem => {
-                        return { 
-                            label: child.name ?? "",
-                            kind: toCompletionItemKind(child.type ?? NodeType.CLASS), 
-                    }}
+                    toCompletionItem
                 ) ?? [];
+            } else if (memberChain == "this") {
+                let groups = RGX_CLASSDEF.exec(source);
+                let className = groups?.at(1);
+                if (className) return codeDb.getNode(className).children?.map(toCompletionItem) || [];
+                else return []
+
             } else if (new RegExp(RGX_IDENTIFIER).test(memberChain)) {
                 let dataType = getObjectDataType(source, memberChain, caretCharacterIndex);
-                if ( dataType && codeDb.containsNode(dataType)) {
+                if (dataType && codeDb.containsNode(dataType)) {
                     return codeDb.getNode(dataType).children?.map(
-                        (child: Node): CompletionItem => {
-                            return {
-                                label: child.name ?? "",
-                                kind: toCompletionItemKind(child.type ?? NodeType.CLASS),
-                            }
-                        }
+                        toCompletionItem
                     ) ?? [];
 
                 }
-                return [];
-            } else return [];
+            }
+            return [];
+
         } else {
             return codeDb.classnames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
         }
@@ -277,13 +279,6 @@ connection.onCompletion(
 // the completion list.
 connection.onCompletionResolve(
     (item: CompletionItem): CompletionItem => {
-        if (item.data === 1) {
-            item.detail = 'TypeScript details';
-            item.documentation = 'TypeScript documentation';
-        } else if (item.data === 2) {
-            item.detail = 'JavaScript details';
-            item.documentation = 'JavaScript documentation';
-        }
         return item;
     }
 );
