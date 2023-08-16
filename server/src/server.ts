@@ -118,7 +118,7 @@ let globalSettings: ExampleSettings = defaultSettings;
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
 function getObjectDataType(source: string, varName: string, location: integer) {
-    let assignmentRegex = new RegExp(`${varName}\\s*=\\s*new\\s+(${RGX_MEMBER_CHAIN})`);
+    let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(new)?\\s+(${RGX_MEMBER_CHAIN})`);
     let matches: RegExpMatchArray | null = null;
     let previousLastIndex: integer = -1;
     while (assignmentRegex.lastIndex <= location) {
@@ -129,7 +129,7 @@ function getObjectDataType(source: string, varName: string, location: integer) {
         previousLastIndex = assignmentRegex.lastIndex;
     }
 
-    return matches && matches[1];
+    return matches && matches[2];
 }
 
 connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
