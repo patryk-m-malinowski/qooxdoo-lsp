@@ -1,196 +1,26 @@
-import {
-    createConnection,
-    TextDocuments,
-    ProposedFeatures,
-    InitializeParams,
-    DidChangeConfigurationNotification,
-    CompletionItem,
-    CompletionItemKind,
-    TextDocumentSyncKind,
-    InitializeResult,
-    CompletionParams,
-    integer,
-    WorkspaceFolder,
-    DidChangeWatchedFilesNotification,
-    DidChangeWatchedFilesParams,
-    FileEvent,
-    FileChangeType,
-} from 'vscode-languageserver/node';
+import { promises } from 'fs';
 import {
     TextDocument
 } from 'vscode-languageserver-textdocument';
-import { Node, NodeType, QxDatabase } from "./db";
-import { promises } from 'fs';
-
-const RGX_IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
-const RGX_MEMBER_CHAIN = `${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*`;
-const RGX_CLASSDEF = /qx\.Class\.define\("(.+?)"/;
-
-async function initDb(): Promise<void> {
-    let projDir = await getQxProjDir();
-    if (projDir)
-        codeDb.initialize(projDir);
-}
-
-const codeDb = new QxDatabase();
-// Create a connection for the server, using Node's IPC as a transport.
-// Also include all preview / proposed LSP features.
-const connection = createConnection(ProposedFeatures.all);
-
-
-// Create a simple text document manager.
-const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
-let hasConfigurationCapability = false;
-let hasWorkspaceFolderCapability = false;
-let hasDiagnosticRelatedInformationCapability = false;
-
-async function getDocumentWorkspaceFolder(fileUri: string): Promise<string | undefined> {
-    let folders = await connection.workspace.getWorkspaceFolders()
-    return folders?.map((folder) => folder.uri)
-        .filter((fsPath) => fileUri?.startsWith(fsPath))[0];
-}
-
-
-connection.onInitialize((params: InitializeParams) => {
-    const capabilities = params.capabilities;
-
-    // Does the client support the `workspace/configuration` request?
-    // If not, we fall back using global settings.
-    hasConfigurationCapability = !!(
-        capabilities.workspace && !!capabilities.workspace.configuration
-    );
-    hasWorkspaceFolderCapability = !!(
-        capabilities.workspace && !!capabilities.workspace.workspaceFolders
-    );
-    hasDiagnosticRelatedInformationCapability = !!(
-        capabilities.textDocument &&
-        capabilities.textDocument.publishDiagnostics &&
-        capabilities.textDocument.publishDiagnostics.relatedInformation
-    );
-
-    const result: InitializeResult = {
-        capabilities: {
-            textDocumentSync: TextDocumentSyncKind.Incremental,
-            // Tell the client that this server supports code completion.
-            completionProvider: {
-                resolveProvider: true,
-                triggerCharacters: ["."]
-
-            }
-        }
-    };
-    if (hasWorkspaceFolderCapability) {
-        result.capabilities.workspace = {
-            workspaceFolders: {
-                supported: true
-            }
-        };
-    }
-    return result;
-});
-
-connection.onInitialized(() => {
-    if (hasConfigurationCapability) {
-        // Register for all configuration changes.
-        connection.client.register(DidChangeConfigurationNotification.type, undefined);
-        connection.client.register(DidChangeWatchedFilesNotification.type, undefined);
-    }
-    if (hasWorkspaceFolderCapability) {
-        connection.workspace.onDidChangeWorkspaceFolders(_event => {
-            connection.console.log('Workspace folder change event received.');
-        });
-    }
-    initDb();
-});
-
-// The example settings
-interface ExampleSettings {
-    maxNumberOfProblems: number;
-}
-
-// The global settings, used when the `workspace/configuration` request is not supported by the client.
-// Please note that this is not the case when using this server with the client provided in this example
-// but could happen with other clients.
-const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
-let globalSettings: ExampleSettings = defaultSettings;
-
-// Cache the settings of all open documents
-const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
-
-function getObjectDataType(source: string, varName: string, location: integer) {
-    let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(new)?\\s+(${RGX_MEMBER_CHAIN})`);
-    let matches: RegExpMatchArray | null = null;
-    let previousLastIndex: integer = -1;
-    while (assignmentRegex.lastIndex <= location) {
-        matches = assignmentRegex.exec(source);
-        if (!matches) break;
-        if (matches && assignmentRegex.lastIndex == previousLastIndex)
-            break;
-        previousLastIndex = assignmentRegex.lastIndex;
-    }
-
-    return matches && matches[2];
-}
-
-connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
-    params.changes.forEach((change: FileEvent) => {
-        if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
-            codeDb.readFile(uriToPath(change.uri));
-    })
-})
-
-connection.onDidChangeConfiguration(change => {
-    if (hasConfigurationCapability) {
-        // Reset all cached document settings
-        documentSettings.clear();
-    } else {
-        globalSettings = <ExampleSettings>(
-            (change.settings.languageServerExample || defaultSettings)
-        );
-    }
-
-    // Revalidate all open text documents
-});
-
-function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
-    if (!hasConfigurationCapability) {
-        return Promise.resolve(globalSettings);
-    }
-    let result = documentSettings.get(resource);
-    if (!result) {
-        result = connection.workspace.getConfiguration({
-            scopeUri: resource,
-            section: 'languageServerExample'
-        });
-        documentSettings.set(resource, result);
-    }
-    return result;
-}
-
-// Only keep settings for open documents
-documents.onDidClose(e => {
-    documentSettings.delete(e.document.uri);
-});
-
-
-/**
- * 
- * @param source Source of file
- * @param index Zero-based character index on where to find the expression
- * @returns A member chain (i.e. thing1.thing2.thing3, ...) before the index if it exists, null if not.
- * 
- * This function is used to get the expression for which to show the autocomplete suggestions.
- */
-function getMemberChainBefore(source: string, index: integer): string | null {
-    let memberChainRegex = new RegExp(`(${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*)(\\(.*\\))?\\.(${RGX_IDENTIFIER})?`, "g");
-    while (memberChainRegex.lastIndex <= index) {
-        let matches: RegExpExecArray | null = memberChainRegex.exec(source);
-        if (memberChainRegex.lastIndex == index) {
-            return matches && matches[1];
-        } else if (memberChainRegex.lastIndex == 0) return null;
-    }
-    return null
-}
+import {
+    CompletionItem,
+    CompletionParams,
+    Connection,
+    DidChangeConfigurationNotification,
+    DidChangeWatchedFilesNotification,
+    DidChangeWatchedFilesParams,
+    FileChangeType,
+    FileEvent,
+    InitializeParams,
+    InitializeResult,
+    ProposedFeatures,
+    TextDocumentSyncKind,
+    TextDocuments,
+    WorkspaceFolder,
+    createConnection,
+} from 'vscode-languageserver/node';
+import { CompletionEngine } from './completion-engine';
+import { QxClassDb } from "./db";
 
 /**
  * 
@@ -201,91 +31,185 @@ function uriToPath(uri: string): string {
     return uri.substring("file://".length);
 }
 
-/**
- * @returns The workspace folder with the Qooxdoo source. This folder must contain compile.json. Returns null if no such folder exists
- */
-async function getQxProjDir(): Promise<string | null> {
-    let folders = await connection.workspace.getWorkspaceFolders();
-    if (!folders) return null;
-    for (var f = 0; f < folders?.length; f++) {
-        let folder: WorkspaceFolder = folders[f];
-        let path = uriToPath(folder.uri);
-        let files = await promises.readdir(path);
-        if (files.indexOf("compile.json") >= 0) {
-            return uriToPath(folder.uri);
-        }
+export class Server {
+    static instance: Server | null
+    _connection: Connection | null = null
+    _classDb: QxClassDb = new QxClassDb;
+    private _documents = new TextDocuments(TextDocument);
+    
+
+    static getInstance(): Server {
+        if (!this.instance) this.instance = new Server();
+        return this.instance;
     }
-    return null;
-}
+
+    async start(): Promise<void> {
+        
+        // Create a connection for the server, using Node's IPC as a transport.
+        // Also include all preview / proposed LSP features.
+        const connection = this._connection = createConnection(ProposedFeatures.all);
 
 
+        // Create a simple text document manager.
+        const documents: TextDocuments<TextDocument> = this._documents;
+        let hasConfigurationCapability = false;
+        let hasWorkspaceFolderCapability = false;
+        let hasDiagnosticRelatedInformationCapability = false;
 
-connection.onDidSaveTextDocument(initDb);
 
-function toCompletionItemKind(nodeType: NodeType): CompletionItemKind {
-    switch (nodeType) {
-        case NodeType.CLASS: return CompletionItemKind.Class;
-        case NodeType.STATIC_METHOD: case NodeType.METHOD: return CompletionItemKind.Method;
-        case NodeType.MEMBER_VARIABLE: return CompletionItemKind.Variable;
-        case NodeType.PACKAGE: return CompletionItemKind.Module;
-        default: return CompletionItemKind.Text;
-    }
-}
+        connection.onInitialize((params: InitializeParams) => {
+            const capabilities = params.capabilities;
 
-connection.onCompletion(
-    async (completionInfo: CompletionParams): Promise<CompletionItem[]> => {
-        let document: TextDocument = documents.get(completionInfo.textDocument.uri) as TextDocument;
+            // Does the client support the `workspace/configuration` request?
+            // If not, we fall back using global settings.
+            hasConfigurationCapability = !!(
+                capabilities.workspace && !!capabilities.workspace.configuration
+            );
+            hasWorkspaceFolderCapability = !!(
+                capabilities.workspace && !!capabilities.workspace.workspaceFolders
+            );
+            hasDiagnosticRelatedInformationCapability = !!(
+                capabilities.textDocument &&
+                capabilities.textDocument.publishDiagnostics &&
+                capabilities.textDocument.publishDiagnostics.relatedInformation
+            );
 
-        let caretCharacterIndex = document.offsetAt(completionInfo.position);
-        let source = document.getText();
+            const result: InitializeResult = {
+                capabilities: {
+                    textDocumentSync: TextDocumentSyncKind.Incremental,
+                    // Tell the client that this server supports code completion.
+                    completionProvider: {
+                        resolveProvider: true,
+                        triggerCharacters: ["."]
 
-        let memberChain = getMemberChainBefore(source, caretCharacterIndex);
-
-        const toCompletionItem = (child: Node): CompletionItem => {
-            return {
-                label: child.name ?? "",
-                kind: toCompletionItemKind(child.type ?? NodeType.CLASS),
-            }
-        }
-        if (memberChain) {
-            if (codeDb.containsNode(memberChain)) {
-                return codeDb.getNode(memberChain).children?.map(
-                    toCompletionItem
-                ) ?? [];
-            } else if (memberChain == "this") {
-                let groups = RGX_CLASSDEF.exec(source);
-                let className = groups?.at(1);
-                if (className) return codeDb.getNode(className).children?.map(toCompletionItem) || [];
-                else return []
-
-            } else if (new RegExp(RGX_IDENTIFIER).test(memberChain)) {
-                let dataType = getObjectDataType(source, memberChain, caretCharacterIndex);
-                if (dataType && codeDb.containsNode(dataType)) {
-                    return codeDb.getNode(dataType).children?.map(
-                        toCompletionItem
-                    ) ?? [];
-
+                    }
                 }
+            };
+            if (hasWorkspaceFolderCapability) {
+                result.capabilities.workspace = {
+                    workspaceFolders: {
+                        supported: true
+                    }
+                };
             }
-            return [];
+            return result;
+        });
 
-        } else {
-            return codeDb.classnames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
+
+        connection.onInitialized(() => {
+            if (hasConfigurationCapability) {
+                // Register for all configuration changes.
+                connection.client.register(DidChangeConfigurationNotification.type, undefined);
+                connection.client.register(DidChangeWatchedFilesNotification.type, undefined);
+            }
+            if (hasWorkspaceFolderCapability) {
+                connection.workspace.onDidChangeWorkspaceFolders(_event => {
+                    connection.console.log('Workspace folder change event received.');
+                });
+            }
+
+            const tryInitClassDb = async () => {
+                
+
+                const mainProjDir = await this.getQxProjDir();
+                if (mainProjDir !== null) {
+                    this._classDb.initialize(mainProjDir);                    
+                } else setTimeout(tryInitClassDb, 1000);
+            }
+
+            tryInitClassDb();
+        });
+
+        // The example settings
+        interface ExampleSettings {
+            maxNumberOfProblems: number;
         }
+
+        // The global settings, used when the `workspace/configuration` request is not supported by the client.
+        // Please note that this is not the case when using this server with the client provided in this example
+        // but could happen with other clients.
+        const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
+        let globalSettings: ExampleSettings = defaultSettings;
+
+        // Cache the settings of all open documents
+        const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
+
+
+        connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
+            params.changes.forEach((change: FileEvent) => {
+                if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
+                    this._classDb.readFile(uriToPath(change.uri));
+            })
+        })
+
+        connection.onDidChangeConfiguration(change => {
+            if (hasConfigurationCapability) {
+                // Reset all cached document settings
+                documentSettings.clear();
+            } else {
+                globalSettings = <ExampleSettings>(
+                    (change.settings.languageServerExample || defaultSettings)
+                );
+            }
+
+        });
+
+        // Only keep settings for open documents
+        documents.onDidClose(e => {
+            documentSettings.delete(e.document.uri);
+        });
+
+        const completionEngine = new CompletionEngine();
+        connection.onCompletion(
+            async (completionInfo: CompletionParams): Promise<CompletionItem[]> => {
+                return completionEngine.getCompletionList(completionInfo);
+
+            }
+        );
+
+        // This handler resolves additional information for the item selected in
+        // the completion list.
+        connection.onCompletionResolve(
+            (item: CompletionItem): CompletionItem => {
+                return item;
+            }
+        );
+
+        // Make the text document manager listen on the connection
+        // for open, change and close text document events
+        documents.listen(connection);
+
+        // Listen on the connection
+        connection.listen();
     }
-);
 
-// This handler resolves additional information for the item selected in
-// the completion list.
-connection.onCompletionResolve(
-    (item: CompletionItem): CompletionItem => {
-        return item;
+    /**
+    * @returns The workspace folder with the Qooxdoo source. This folder must contain compile.json. Returns null if no such folder exists
+    */
+    async getQxProjDir(): Promise<string | null> {
+        if (!this._connection) throw new Error("Connection cannot be null");
+        let folders = await this._connection.workspace.getWorkspaceFolders();
+        if (!folders) return null;
+        for (var f = 0; f < folders?.length; f++) {
+            let folder: WorkspaceFolder = folders[f];
+            let path = uriToPath(folder.uri);
+            let files = await promises.readdir(path);
+            if (files.indexOf("compile.json") >= 0) {
+                return uriToPath(folder.uri);
+            }
+        }
+        return null;
     }
-);
 
-// Make the text document manager listen on the connection
-// for open, change and close text document events
-documents.listen(connection);
+    public get classDb() {
+        return this._classDb;
+    }
 
-// Listen on the connection
-connection.listen();
+    public get documents() {
+        return this._documents;
+    }
+}
+
+Server.getInstance().start();
+
+

@@ -2,63 +2,10 @@ import fs = require('fs/promises');
 import glob = require('glob');
 import path = require("path")
 
-export class Node {
-	name!: string | null;
-	docString?: string;
-	type!: NodeType | null;
-	children?: Node[];
-
-	constructor(name: string | null, type: NodeType | null) {
-		this.name = name;
-		this.type = type;
-	}
-
-	containsNode(path: string): boolean {
-		return this.containsNode_(path.split("."));
-	}
-	containsNode_(pathItems: string[]): boolean {
-		if (!this.children) return false;
-		if (!pathItems.length) return true;
-		let child = this.children.find(child => child.name == pathItems[0]);
-		if (child) {
-			pathItems.splice(0, 1);
-			return child.containsNode_(pathItems);
-		}
-		return false;
-	}
-
-	getNode(path: string): Node {
-		return this._getNode(path.split("."));
-	}
-
-
-	_getChild(name: string): Node {
-		if (!this.children) this.children = [];
-		let child = this.children.find(c => c.name == name);
-		if (!child) {
-			let childType = name[0] >= 'A' && name[0] <= 'Z' ? NodeType.CLASS : NodeType.PACKAGE;
-			child = new Node(name, childType);
-			this.children.push(child);
-		}
-		return child;
-	}
-
-	_getNode(path: string[]): Node {
-		if (!path.length) {
-			return this;
-		} else {
-			let childName = path.at(0);
-			if (!childName) throw new Error("Child must not be null");
-			path.splice(0, 1);
-			return this._getChild(childName)._getNode(path);
-		}
-	}
-}
-
-export enum NodeType { PACKAGE, CLASS, METHOD, MEMBER_VARIABLE, STATIC_METHOD, STATIC_VARIABLE };
-// enum NodeType {PACKAGE, CLASS};
-
-export class QxDatabase {
+/**
+ * This class stores all information about all the different c
+ */
+export class QxClassDb {
 	fileNames_: string[] = [];
 	root_: Node = new Node(null, null);
 	classnames: string[] = [];
@@ -127,3 +74,59 @@ export class QxDatabase {
 		return this.root_;
 	}
 }
+
+export class Node {
+	name!: string | null;
+	docString?: string;
+	type!: NodeType | null;
+	children?: Node[];
+
+	constructor(name: string | null, type: NodeType | null) {
+		this.name = name;
+		this.type = type;
+	}
+
+	containsNode(path: string): boolean {
+		return this.containsNode_(path.split("."));
+	}
+	containsNode_(pathItems: string[]): boolean {
+		if (!this.children) return false;
+		if (!pathItems.length) return true;
+		let child = this.children.find(child => child.name == pathItems[0]);
+		if (child) {
+			pathItems.splice(0, 1);
+			return child.containsNode_(pathItems);
+		}
+		return false;
+	}
+
+	getNode(path: string): Node {
+		return this._getNode(path.split("."));
+	}
+
+
+	_getChild(name: string): Node {
+		if (!this.children) this.children = [];
+		let child = this.children.find(c => c.name == name);
+		if (!child) {
+			let childType = name[0] >= 'A' && name[0] <= 'Z' ? NodeType.CLASS : NodeType.PACKAGE;
+			child = new Node(name, childType);
+			this.children.push(child);
+		}
+		return child;
+	}
+
+	_getNode(path: string[]): Node {
+		if (!path.length) {
+			return this;
+		} else {
+			let childName = path.at(0);
+			if (!childName) throw new Error("Child must not be null");
+			path.splice(0, 1);
+			return this._getChild(childName)._getNode(path);
+		}
+	}
+}
+
+export enum NodeType { PACKAGE, CLASS, METHOD, MEMBER_VARIABLE, STATIC_METHOD, STATIC_VARIABLE };
+// enum NodeType {PACKAGE, CLASS};
