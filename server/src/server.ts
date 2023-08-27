@@ -1,4 +1,4 @@
-import { promises } from 'fs';
+const fs = require('fs').promises;
 import {
     TextDocument
 } from 'vscode-languageserver-textdocument';
@@ -19,8 +19,8 @@ import {
     WorkspaceFolder,
     createConnection,
 } from 'vscode-languageserver/node';
-import { CompletionEngine } from './completion-engine';
-import { QxClassDb } from "./db";
+import { CompletionEngine } from './CompletionEngine';
+import { QxClassDb } from "./QxClassDb";
 
 /**
  * 
@@ -36,15 +36,15 @@ export class Server {
     _connection: Connection | null = null
     _classDb: QxClassDb = new QxClassDb;
     private _documents = new TextDocuments(TextDocument);
-    
+
 
     static getInstance(): Server {
         if (!this.instance) this.instance = new Server();
         return this.instance;
     }
 
-    async start(): Promise<void> {
-        
+    start() {
+
         // Create a connection for the server, using Node's IPC as a transport.
         // Also include all preview / proposed LSP features.
         const connection = this._connection = createConnection(ProposedFeatures.all);
@@ -109,11 +109,9 @@ export class Server {
             }
 
             const tryInitClassDb = async () => {
-                
-
                 const mainProjDir = await this.getQxProjDir();
                 if (mainProjDir !== null) {
-                    this._classDb.initialize(mainProjDir);                    
+                    this._classDb.initialize(mainProjDir);
                 } else setTimeout(tryInitClassDb, 1000);
             }
 
@@ -138,7 +136,7 @@ export class Server {
         connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
             params.changes.forEach((change: FileEvent) => {
                 if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
-                    this._classDb.readFile(uriToPath(change.uri));
+                    this._classDb.readClassJson(uriToPath(change.uri));
             })
         })
 
@@ -193,7 +191,7 @@ export class Server {
         for (var f = 0; f < folders?.length; f++) {
             let folder: WorkspaceFolder = folders[f];
             let path = uriToPath(folder.uri);
-            let files = await promises.readdir(path);
+            let files = await fs.readdir(path);
             if (files.indexOf("compile.json") >= 0) {
                 return uriToPath(folder.uri);
             }
@@ -211,5 +209,3 @@ export class Server {
 }
 
 Server.getInstance().start();
-
-
