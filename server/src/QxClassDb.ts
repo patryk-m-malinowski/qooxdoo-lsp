@@ -3,20 +3,19 @@ import glob = require('glob');
 import path = require("path")
 
 /** Stores information regarding a Qooxdoo class e.g. the methods, properties, and members.
- *  Format is exactly the same as the JSON files found in compiled/* / transpiled  */
+ *  Format is exactly the same as the JSON files found in compiled/xxx/transpiled  
+ * */
 export type ClassInfo = any;
-export type PackageChildType = { type: ClassOrPackageType, name: string };
-
 export interface PackageInfo {
   children: PackageChildType[]
 }
 
-export enum ClassOrPackageType {
-  CLASS, PACKAGE
-};
+export type PackageChildType = { type: "class" | "package", name: string };
+
+
 
 /**
- * This class stores all information about all the different c
+ * This class stores all information about all Qooxdoo classes and packages and their hierarchy
  */
 export class QxClassDb {
   /** A tree representing the hierarchy of packages and classes in the project */
@@ -51,7 +50,7 @@ export class QxClassDb {
    * @param classOrPackageName Fully qualified name of class or package
    * @returns 
    */
-  public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: ClassOrPackageType, info: ClassInfo | PackageInfo } | null> {
+  public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: "class" | "package"; info: ClassInfo | PackageInfo; } | null> {
     if (!this._namesTree.containsNode(classOrPackageName)) return null;
 
     let node = this._namesTree.getNode(classOrPackageName);
@@ -60,19 +59,19 @@ export class QxClassDb {
         const packageChildren: PackageChildType[] = [];
         const packageNode = node as PackageNode;
         for (const child of packageNode.children) {
-          let childType: ClassOrPackageType = child.type == NodeType.CLASS ? ClassOrPackageType.CLASS
-            : child.type == NodeType.PACKAGE ? ClassOrPackageType.PACKAGE
-              : (function () { throw new Error() })();
+          let childType: "class" | "package" = child.type == NodeType.CLASS ? "class"
+            : child.type == NodeType.PACKAGE ? "package"
+              : "class";
 
           packageChildren.push({ name: child.name, type: childType });
         }
 
-        return { type: ClassOrPackageType.PACKAGE, info: { children: packageChildren } };
+        return { type: "package", info: { children: packageChildren } };
       case NodeType.CLASS:
         const classNode = node as ClassNode;
         let jsonData = await fs.readFile(classNode.jsonFilePath);
         const classInfo = JSON.parse(jsonData.toString());
-        return { type: ClassOrPackageType.CLASS, info: classInfo };
+        return { type: "class", info: classInfo };
       case NodeType.ROOT:
         throw new Error("Node must not be root!");
     }

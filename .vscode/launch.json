@@ -19,12 +19,10 @@
       "autoAttachChildProcesses": true
     },
     {
-
-      "type": "node", 
-      "name" : "Attach to server",
-      "request" : "attach",
+      "type": "node",
+      "name": "Attach to server",
+      "request": "attach",
       "port": 6009
-
-    }
+    },
   ]
 }

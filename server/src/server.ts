@@ -13,28 +13,29 @@ import {
     FileEvent,
     InitializeParams,
     InitializeResult,
+    ParameterInformation,
     ProposedFeatures,
+    SignatureHelp,
+    SignatureHelpParams,
     TextDocumentSyncKind,
     TextDocuments,
     WorkspaceFolder,
     createConnection,
+    integer,
 } from 'vscode-languageserver/node';
 import { CompletionEngine } from './CompletionEngine';
-import { QxClassDb } from "./QxClassDb";
+import { ClassInfo, QxClassDb } from "./QxClassDb";
+import { rfind } from './search';
+import { Context, TypeInfo } from './Context';
+import { uriToPath } from './files';
+import { getObjectExpressionEndingAt } from './sourceTools';
 
-/**
- * 
- * @param uri uri
- * @returns Converts uri to absolute file system path
- */
-function uriToPath(uri: string): string {
-    return uri.substring("file://".length);
-}
+
 
 export class Server {
     static instance: Server | null
     _connection: Connection | null = null
-    _classDb: QxClassDb = new QxClassDb;
+
     private _documents = new TextDocuments(TextDocument);
 
 
@@ -82,6 +83,10 @@ export class Server {
                         resolveProvider: true,
                         triggerCharacters: ["."]
 
+                    },
+
+                    signatureHelpProvider: {
+                        triggerCharacters: ['(', ',']
                     }
                 }
             };
@@ -111,7 +116,7 @@ export class Server {
             const tryInitClassDb = async () => {
                 const mainProjDir = await this.getQxProjDir();
                 if (mainProjDir !== null) {
-                    this._classDb.initialize(mainProjDir);
+                    Context.getInstance().qxClassDb.initialize(mainProjDir);
                 } else setTimeout(tryInitClassDb, 1000);
             }
 
@@ -136,7 +141,7 @@ export class Server {
         connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
             params.changes.forEach((change: FileEvent) => {
                 if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
-                    this._classDb.readClassJson(uriToPath(change.uri));
+                    Context.getInstance().qxClassDb.readClassJson(uriToPath(change.uri));
             })
         })
 
@@ -173,6 +178,79 @@ export class Server {
             }
         );
 
+
+        connection.onSignatureHelp(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
+
+            let document = this.documents.get(params.textDocument.uri);
+            if (!document) throw new Error("Text document is undefined!");
+            let caretIndex: integer = document.offsetAt(params.position);
+
+            let source: string = document.getText();
+
+            let bracketPos = rfind(source, caretIndex, /\(/g)?.start;
+            if (!bracketPos) throw new Error();
+
+            //find parameter number. Count number of columns between opening '(' and ca
+            let paramIndex = source.substring(bracketPos, caretIndex).split('').filter(c => c == ',').length;
+
+            let objAndMethod = getObjectExpressionEndingAt(source, bracketPos);
+            if (!objAndMethod) return null;
+
+            const tokens = objAndMethod.split('.');
+            if (tokens.length < 2) return null;
+            let methodName = tokens.pop();
+            if (!methodName) throw new Error();
+
+            let object: string = tokens.join(".");
+            let objectType: TypeInfo | null = await Context.getInstance().getExpressionType(source, caretIndex, object);
+            if (!objectType) return null;
+
+
+            let methodClass = objectType.typeName;
+            if (!methodClass) throw new Error();
+
+            var classOrPackageInfo = await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass);
+            if (!classOrPackageInfo) return null;
+            if (classOrPackageInfo.type != "class") return null;
+
+            var classInfo: ClassInfo = classOrPackageInfo.info;
+
+            let methodInfo = classInfo.members[methodName];
+            if (!methodInfo || methodInfo.type != "function") return null;
+
+            let paramList = methodInfo?.jsdoc?.["@param"];
+
+            if (!paramList) return null;
+
+            var paramLabels: string[] = [];
+
+            let parameters: ParameterInformation[] = [];
+
+            for (const paramInfo of paramList) {
+                const paramLabel = paramInfo.paramName + ": " + paramInfo.type ?? "any";
+                paramLabels.push(paramLabel);
+                parameters.push({
+                    label: paramLabel,
+                    documentation: paramInfo.description ?? paramInfo.desc
+                });
+            }
+
+            let signatureStr = `${methodName}(${paramLabels.join(',')})`;
+
+            return signatureStr ? {
+                signatures: [
+                    {
+                        label: signatureStr,
+                        documentation: methodInfo.jsdoc?.["@description"].body,
+                        parameters
+                    }
+                ],
+                activeSignature: 0,
+                activeParameter: paramIndex
+
+            } : null;
+        })
+
         // Make the text document manager listen on the connection
         // for open, change and close text document events
         documents.listen(connection);
@@ -197,10 +275,6 @@ export class Server {
             }
         }
         return null;
-    }
-
-    public get classDb() {
-        return this._classDb;
     }
 
     public get documents() {

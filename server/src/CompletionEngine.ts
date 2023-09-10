@@ -1,6 +1,10 @@
 import { CompletionItem, CompletionItemKind, CompletionParams, CompletionTriggerKind, TextDocument, integer } from 'vscode-languageserver';
-import { ClassInfo, PackageInfo, ClassOrPackageType } from './QxClassDb';
+import { ClassInfo, PackageInfo } from './QxClassDb';
 import { Server } from './server'
+import { Context } from './Context';
+import { getObjectExpressionEndingAt } from './sourceTools';
+import { rfind } from './search';
+
 
 const RGX_IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
 const RGX_MEMBER_CHAIN = `${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*`;
@@ -16,18 +20,8 @@ export class CompletionEngine {
    * @returns A list of all completion suggestions
    */
   async getCompletionList(completionInfo: CompletionParams): Promise<CompletionItem[]> {
-    const classDb = Server.getInstance().classDb;
+    const classDb = Context.getInstance().qxClassDb;
 
-    function getExpressionBeforeCaret(): string | null {
-      let memberChainRegex = new RegExp(`(${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*)(\\(.*\\))?\\.(${RGX_IDENTIFIER})?`, "g");
-      while (memberChainRegex.lastIndex <= caretCharacterIndex) {
-        let matches: RegExpExecArray | null = memberChainRegex.exec(source);
-        if (memberChainRegex.lastIndex == caretCharacterIndex) {
-          return matches && matches[1];
-        } else if (memberChainRegex.lastIndex == 0) return null;
-      }
-      return null
-    }
 
     let document: TextDocument | undefined = Server.getInstance().documents.get(completionInfo.textDocument.uri);
     if (!document) throw new Error("Text document is undefined!");
@@ -35,8 +29,10 @@ export class CompletionEngine {
     let caretCharacterIndex: integer = document.offsetAt(completionInfo.position);
     let source: string = document.getText();
 
-    let exprn: string | null = getExpressionBeforeCaret();
-
+    let dotPos = rfind(source, caretCharacterIndex, "\\.\\w*");
+    if (dotPos && dotPos.end != caretCharacterIndex) dotPos = null;
+    let exprn: string | null = dotPos && getObjectExpressionEndingAt(source, dotPos.start);
+    if (exprn?.startsWith("new ")) exprn = exprn.substring("new ".length);
 
     if (exprn) {
       /**
@@ -48,10 +44,10 @@ export class CompletionEngine {
         let classOrPackageInfo = await classDb.getClassOrPackageInfo(classOrPackageName);
         if (!classOrPackageInfo) return null;
 
-        if (classOrPackageInfo.type == ClassOrPackageType.PACKAGE) {
+        if (classOrPackageInfo.type == "package") {
           const packageInfo: PackageInfo = classOrPackageInfo.info;
           for (const packageChild of packageInfo.children) {
-            completionItems.push({ label: packageChild.name, kind: packageChild.type == ClassOrPackageType.CLASS ? CompletionItemKind.Class : CompletionItemKind.Module });
+            completionItems.push({ label: packageChild.name, kind: packageChild.type == "class" ? CompletionItemKind.Class : CompletionItemKind.Module });
           }
         } else {
           const addCompletionItem = (memberName: string, member: any) => {
@@ -69,7 +65,8 @@ export class CompletionEngine {
 
             completionItems.push({
               label: memberName,
-              kind: kind
+              kind: kind,
+              documentation: member?.jsdoc?.["@description"]?.[0]?.body
             })
           }
           const classInfo: ClassInfo = classOrPackageInfo.info;
@@ -89,8 +86,7 @@ export class CompletionEngine {
       if (classOrPackageCompletionItems) {
         return classOrPackageCompletionItems;
       } else if (exprn == "this") {
-        let groups = RGX_CLASSDEF.exec(source);
-        let className = groups?.at(1);
+        let className = RGX_CLASSDEF.exec(source)?.at(1);
         if (className) return (await getCompletionItemsForClassOrPackage(className)) ?? [];
 
       } else if (new RegExp(RGX_IDENTIFIER).test(exprn)) {
@@ -111,9 +107,7 @@ export class CompletionEngine {
         }
 
         let dataType = getDataTypeOfVariable();
-        (global as any).break = true;
         if (dataType) return (await getCompletionItemsForClassOrPackage(dataType)) ?? [];
-        (global as any).break = false;
       }
       return [];
 

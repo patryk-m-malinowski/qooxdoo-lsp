@@ -12,3 +12,4 @@ server/src/ast.json
 notes
 playground
 qooxdoo-lsp-0.1.0.vsix
+qooxdoo-lsp.code-workspace
