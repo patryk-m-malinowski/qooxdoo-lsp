@@ -1,5 +1,5 @@
 export namespace regexes {
-	export const IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
+	export const IDENTIFIER = "[A-Za-z_][A-Za-z_0-9]*";
 	export const RGX_MEMBER_CHAIN = `${IDENTIFIER}(\\.${IDENTIFIER})*(?=(\\(.*\\))?)`;
 	export const RGX_CLASSDEF = `qx\\.Class\\.define\\("(.+?)"`;
 	export const OBJECT_EXPRN = `(new )?(${regexes.IDENTIFIER}(\\.${regexes.IDENTIFIER})*)(\\(.*\\))?(\\.${regexes.IDENTIFIER})?`

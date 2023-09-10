@@ -71,6 +71,7 @@ export class QxClassDb {
         const classNode = node as ClassNode;
         let jsonData = await fs.readFile(classNode.jsonFilePath);
         const classInfo = JSON.parse(jsonData.toString());
+
         return { type: "class", info: classInfo };
       case NodeType.ROOT:
         throw new Error("Node must not be root!");
@@ -99,7 +100,22 @@ export class QxClassDb {
     classNode.jsonFilePath = filePath;
   }
 
+  //todo getridof
+  // /**
+  //  * Returns information about a member of a class. Return type is any because the data is taken from the Qooxdoo compilation database JSON file
+  //  * @param className 
+  //  * @param memberName 
+  //  */
+  // public async getClassMemberInfo(className: string, memberName: string): Promise<any> {
+  //   let classInfo = (await this.getClassOrPackageInfo(className))?.info;
+  //   if (!classInfo) throw new Error("Class " + className + " does not exist in project");
+
+
+
+  // }
 }
+
+
 
 /** A tree representing the hierarchy of packages and classes in the project */
 enum NodeType { ROOT, CLASS, PACKAGE };

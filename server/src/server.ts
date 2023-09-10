@@ -6,6 +6,7 @@ import {
     CompletionItem,
     CompletionParams,
     Connection,
+    DefinitionParams,
     DidChangeConfigurationNotification,
     DidChangeWatchedFilesNotification,
     DidChangeWatchedFilesParams,
@@ -13,6 +14,7 @@ import {
     FileEvent,
     InitializeParams,
     InitializeResult,
+    Location,
     ParameterInformation,
     ProposedFeatures,
     SignatureHelp,
@@ -29,6 +31,8 @@ import { rfind } from './search';
 import { Context, TypeInfo } from './Context';
 import { uriToPath } from './files';
 import { getObjectExpressionEndingAt } from './sourceTools';
+import { regexes } from './regexes';
+import { strings } from './strings';
 
 
 
@@ -87,6 +91,10 @@ export class Server {
 
                     signatureHelpProvider: {
                         triggerCharacters: ['(', ',']
+                    },
+
+                    definitionProvider: {
+
                     }
                 }
             };
@@ -157,6 +165,7 @@ export class Server {
 
         });
 
+
         // Only keep settings for open documents
         documents.onDidClose(e => {
             documentSettings.delete(e.document.uri);
@@ -209,13 +218,25 @@ export class Server {
             let methodClass = objectType.typeName;
             if (!methodClass) throw new Error();
 
-            var classOrPackageInfo = await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass);
-            if (!classOrPackageInfo) return null;
-            if (classOrPackageInfo.type != "class") return null;
+            // var classOrPackageInfo = await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass);
+            // if (!classOrPackageInfo) return null;
+            // if (classOrPackageInfo.type != "class") return null;
 
-            var classInfo: ClassInfo = classOrPackageInfo.info;
+            let methodInfo;//: ClassInfo = classOrPackageInfo.info;
+            //if the member is inherited, look in the class where it was inherited from
+            while (true) {
+                let classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass))?.info;
+                if (!classInfo) return null;
+                methodInfo = classInfo.members?.[methodName] ?? classInfo.statics?.[methodName];
+                if (!methodInfo) {
+                    methodClass = methodInfo?.overriddenFrom ?? classInfo?.superClass;
+                }
+                else {
+                    break;
+                }
 
-            let methodInfo = classInfo.members[methodName];
+            }
+
             if (!methodInfo || methodInfo.type != "function") return null;
 
             let paramList = methodInfo?.jsdoc?.["@param"];
@@ -250,6 +271,101 @@ export class Server {
 
             } : null;
         })
+        connection.onDefinition(async (params: DefinitionParams): Promise<Location[] | null> => {
+            let context = Context.getInstance();
+            let document = this.documents.get(params.textDocument.uri);
+            if (!document) throw new Error("Text document is undefined!");
+            let caretIndex: integer = document.offsetAt(params.position);
+
+            let source: string = document.getText();
+
+            //find number of characters til the end of word
+            let t = source.substring(caretIndex);
+            let matches = (/\w*/).exec(t);
+            let tilEow = matches?.[0]?.length;
+            if (tilEow == null) throw new Error();
+            let endOfWordPos: number = caretIndex + tilEow;
+
+            let expr = getObjectExpressionEndingAt(source, endOfWordPos);
+            if (!expr || expr.split('').indexOf('.') == -1) return null;
+            if (expr.startsWith("new ")) expr = expr.substring("new ".length);
+
+
+            //check if it's a class
+            let classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(expr))?.info;
+            if (classInfo) {
+                let sourceUri = await context.getSourceUriForClass(expr);
+                let start = classInfo.clazz.location.start;
+                let end = classInfo.clazz.location.end;
+                if (sourceUri) {
+                    return [
+                        Location.create(sourceUri, { start: { line: start.line, character: start.column }, end: { line: end.line, character: end.column } })
+                    ];
+                }
+            } else { // it means it's a member of a class
+                let t = expr.split('.');
+                let memberName: string | null = t.pop() ?? null;
+                if (!memberName) return null;
+                let objectExpr = t?.join('.');
+                if (!objectExpr) throw new Error;
+                if (objectExpr == "this") {
+                    let t = new RegExp(regexes.RGX_CLASSDEF).exec(source)?.at(1);
+                    if (!t) return null; //todo complain
+                    objectExpr = t;
+                };
+
+                let type = await Context.getInstance().getExpressionType(source, caretIndex, objectExpr);
+                if (!type) return null;
+
+
+                let className = type.typeName;
+                let location: any;
+                let classInfo;
+
+                //if the member is inherited, look in the class where it was inherited from
+                while (true) {
+                    classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(className))?.info;
+                    if (!classInfo) return null;
+                    let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
+                    location = memberInfo?.location;
+                    if (!location) {
+                        let matches = /((get)|(set))(\w+)/.exec(memberName);
+                        if (matches && matches[4]) {
+                            let propertyName: string = strings.firstDown(matches[4]);
+                            let propertyInfo: any = classInfo.properties?.[propertyName];
+                            location = propertyInfo?.location;
+                            if (location) break;
+                        }
+                    }
+
+                    if (!location) {
+                        className = memberInfo?.overriddenFrom ?? classInfo?.superClass;
+                    }
+                    else {
+                        break;
+                    }
+
+                }
+
+                let sourceUri = await context.getSourceUriForClass(className);
+                if (!sourceUri) return null;
+                return [
+                    Location.create(sourceUri, {
+                        start: {
+                            line: location.start.line,
+                            character: location.start.column
+                        },
+                        end: {
+                            line: location.end.line,
+                            character: location.end.column
+
+                        }
+                    })
+                ];
+            }
+
+            return null;
+        })
 
         // Make the text document manager listen on the connection
         // for open, change and close text document events
@@ -258,6 +374,8 @@ export class Server {
         // Listen on the connection
         connection.listen();
     }
+
+
 
     /**
     * @returns The workspace folder with the Qooxdoo source. This folder must contain compile.json. Returns null if no such folder exists
@@ -279,6 +397,10 @@ export class Server {
 
     public get documents() {
         return this._documents;
+    }
+
+    public async getWorkspaceFolders(): Promise<WorkspaceFolder[] | null> {
+        return this._connection?.workspace.getWorkspaceFolders() ?? null;
     }
 }
 
