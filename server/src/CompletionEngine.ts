@@ -4,11 +4,10 @@ import { Server } from './server'
 import { Context } from './Context';
 import { getObjectExpressionEndingAt } from './sourceTools';
 import { rfind } from './search';
+import { regexes } from './regexes';
 
 
 const RGX_IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
-const RGX_MEMBER_CHAIN = `${RGX_IDENTIFIER}(\\.${RGX_IDENTIFIER})*`;
-const RGX_CLASSDEF = /qx\.Class\.define\("(.+?)"/;
 
 /**
  * This class manages the type suggestions logic
@@ -29,12 +28,12 @@ export class CompletionEngine {
     let caretCharacterIndex: integer = document.offsetAt(completionInfo.position);
     let source: string = document.getText();
 
-    let dotPos = rfind(source, caretCharacterIndex, "\\.\\w*");
+    let dotPos = rfind(source, caretCharacterIndex, `\\.(${regexes.IDENTIFIER})?`); // TODO make this an identifier!
     if (dotPos && dotPos.end != caretCharacterIndex) dotPos = null;
     let exprn: string | null = dotPos && getObjectExpressionEndingAt(source, dotPos.start);
-    if (exprn?.startsWith("new ")) exprn = exprn.substring("new ".length);
 
     if (exprn) {
+      if (!dotPos) throw new Error();
       /**
        * Returns completion items for class or package. Returns null if the class or package is not found in project.
        * @param classOrPackageName Fully-qualified name of class or package
@@ -81,38 +80,11 @@ export class CompletionEngine {
         return completionItems;
       }
 
-      //check if the expression is a fully-qualified name of a qx class      
-      let classOrPackageCompletionItems = await getCompletionItemsForClassOrPackage(exprn);
-      if (classOrPackageCompletionItems) {
-        return classOrPackageCompletionItems;
-      } else if (exprn == "this") {
-        let className = RGX_CLASSDEF.exec(source)?.at(1);
-        if (className) return (await getCompletionItemsForClassOrPackage(className)) ?? [];
+      let typeInfo = await Context.getInstance().getExpressionType(source, dotPos.start, exprn);
+      if (typeInfo)
+        return await getCompletionItemsForClassOrPackage(typeInfo?.typeName) ?? [];
 
-      } else if (new RegExp(RGX_IDENTIFIER).test(exprn)) {
-
-        function getDataTypeOfVariable() {
-          let assignmentRegex = new RegExp(`${exprn}\\s*=\\s*(new)?\\s+(${RGX_MEMBER_CHAIN})`);
-          let matches: RegExpMatchArray | null = null;
-          let previousLastIndex: integer = -1;
-          while (assignmentRegex.lastIndex <= caretCharacterIndex) {
-            matches = assignmentRegex.exec(source);
-            if (!matches) break;
-            if (matches && assignmentRegex.lastIndex == previousLastIndex)
-              break;
-            previousLastIndex = assignmentRegex.lastIndex;
-          }
-
-          return matches && matches[2];
-        }
-
-        let dataType = getDataTypeOfVariable();
-        if (dataType) return (await getCompletionItemsForClassOrPackage(dataType)) ?? [];
-      }
-      return [];
-
-    } else {
-      return classDb.classNames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
     }
+    return [];
   }
 }

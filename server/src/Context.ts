@@ -11,13 +11,28 @@ import { Server } from './server'
 import path = require('path')
 import fs = require('fs/promises');
 import { existsSync } from 'fs'
+import acorn = require('acorn')
 
+type Node = acorn.Node;
 
 export interface TypeInfo {
-	category: "qxPackage" | "qxClass" | "qxObject",
-	typeName: string
+	category: "qxPackage" | "qxClass" | "qxObject" | "function",
+	typeName: string,
+	parameterTypes?: TypeInfo[],
+	returnType?: TypeInfo
 }
 
+function parse(exprn: string) {
+	return acorn.parseExpressionAt(exprn, 0, { ecmaVersion: 6 });
+}
+
+function getSourceOfAst(ast: acorn.Node, source: string) {
+	return source.substring(ast.start, ast.end);
+}
+
+function removeTemplateArgs(typeName: string) {
+	return typeName.replace(/<.*>/, "");
+}
 export class Context {
 	private _qxClassDb: QxClassDb = new QxClassDb()
 	private static _instance: Context
@@ -31,10 +46,13 @@ export class Context {
 		return this._instance;
 	}
 
+
+
 	/**
 	 * Returns the type of the expression (expression) in the source (source) at position (sourcePos)
 	 */
 	public async getExpressionType(source: string, sourcePos: number, expression: string): Promise<TypeInfo | null> {
+		let ast: any = parse(expression); //todo improve this
 
 		if (expression == "this") {
 			var rgx = new RegExp(regexes.RGX_CLASSDEF, "g");
@@ -42,41 +60,62 @@ export class Context {
 			let className = groups?.at(1);
 			if (!className) return null;
 			return { category: "qxObject", typeName: className };
-		}
-
-		let classOrPackageInfo = await this.qxClassDb.getClassOrPackageInfo(expression);
-		if (classOrPackageInfo) {
-			switch (classOrPackageInfo.type) {
-				case "class":
-					return { category: "qxClass", typeName: expression };
-				case "package":
-					return { category: "qxPackage", typeName: expression };
-				default:
+		} else if (ast.type == "MemberExpression") {
+			let classOrPackageInfo = await this.qxClassDb.getClassOrPackageInfo(expression);
+			if (classOrPackageInfo) {
+				switch (classOrPackageInfo.type) {
+					case "class":
+						return { category: "qxClass", typeName: expression };
+					case "package":
+						return { category: "qxPackage", typeName: expression };
+					default:
+				}
 			}
-		}
 
+			//else
+			let objectString = getSourceOfAst(ast.object, expression);
 
-		let rgxNew = new RegExp(regexes.OBJECT_EXPRN, 'g');
-		var matches = rgxNew.exec(expression);
-		let className;
-		if (expression.startsWith("new ") && (className = matches?.[2])) {
-			let classOrPackageInfo = await this.qxClassDb.getClassOrPackageInfo(className);
-			if (!classOrPackageInfo) return null;
-			if (classOrPackageInfo.type == "class") return { category: "qxObject", typeName: className };
-		}
+			let objectTypename = (await this.getExpressionType(source, sourcePos, objectString))?.typeName;
+			if (!objectTypename) return null;
+			let objectClassOrPackageInfo = await this.qxClassDb.getClassOrPackageInfo(objectTypename);
+			if (!objectClassOrPackageInfo || objectClassOrPackageInfo?.info == "qxPackage") return null;
 
-		let rgxIdentifier = new RegExp(regexes.IDENTIFIER);
-		var matches = rgxIdentifier.exec(expression);
-		if (matches?.[0]) {
-			let varName = matches[0];
+			let typeInfo = objectClassOrPackageInfo.info;
+			let allMembers = { ...typeInfo.members, ...typeInfo.statics };
+			const memberName = ast.property.name;
+			const memberInfo = allMembers[memberName];
+			if (memberInfo.type == "variable") {
+				let typeInfo = memberInfo["@type"]?.[0].body;
+				if (!typeInfo) return null;
+				let typeMatch = /\{(.*)\}/.exec(typeInfo);
+				if (!typeMatch) return null;
+				let type: string = removeTemplateArgs(typeMatch[1]);
+				if (await this.qxClassDb.getClassOrPackageInfo(type) == null) {
+					return { category: "qxObject", typeName: type };
+				} else return null;
+			} else if (memberInfo.type == "function") {
+				const returnTypeName = removeTemplateArgs(memberInfo["jsdoc"]?.["@return"]?.[0].type as string);
+				const returnType: TypeInfo = { category: "qxObject", typeName: returnTypeName }; //todo change to object
+				return returnType ? { category: "function", typeName: "", returnType: returnType } : null;
+			}
+		} else if (ast.type == "CallExpression") {
+			let functionType = await this.getExpressionType(source, sourcePos, getSourceOfAst(ast.callee, expression));
+			if (functionType?.category != "function") return null; //todo log error
+			return functionType.returnType ?? null;
+		} else if (ast.type == "NewExpression") {
+			let className = getSourceOfAst(ast, expression);
+			if (!this.qxClassDb.classExists(className)) return null;
+			return { category: "qxObject", typeName: className };
+		} else if (ast.type == "Identifier") {
+			let varName = expression;
 			let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(${regexes.OBJECT_EXPRN})`, "g");
 			let searchInfo = rfind(source, sourcePos, assignmentRegex);
 			if (!searchInfo) return null;
 			return this.getExpressionType(source, searchInfo.start, searchInfo.groups[1]);
+
 		}
 
 		return null;
-
 	}
 
 	async getSourceUriForClass(className: string): Promise<string | null> {
@@ -91,4 +130,5 @@ export class Context {
 		return null;
 
 	}
+
 }

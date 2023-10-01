@@ -205,39 +205,49 @@ export class Server {
             let objAndMethod = getObjectExpressionEndingAt(source, bracketPos);
             if (!objAndMethod) return null;
 
-            const tokens = objAndMethod.split('.');
-            if (tokens.length < 2) return null;
-            let methodName = tokens.pop();
-            if (!methodName) throw new Error();
+            var methodInfo, methodName;
+            //check if objectandmethod is a class, in which case provide constructor params
+            let classInfo;
+            if (objAndMethod.startsWith("new ") && (classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(objAndMethod.substring("new ".length)))?.info)) {
+                methodInfo = classInfo?.construct;
+                methodName = objAndMethod;
+            } else {
+                const tokens = objAndMethod.split('.');
+                if (tokens.length < 2) return null;
+                methodName = tokens.pop();
+                if (!methodName) throw new Error();
 
-            let object: string = tokens.join(".");
-            let objectType: TypeInfo | null = await Context.getInstance().getExpressionType(source, caretIndex, object);
-            if (!objectType) return null;
+                let object: string = tokens.join(".");
+                let objectType: TypeInfo | null = await Context.getInstance().getExpressionType(source, caretIndex, object);
+                if (!objectType) return null;
 
 
-            let methodClass = objectType.typeName;
-            if (!methodClass) throw new Error();
+                let methodClass = objectType.typeName;
+                if (!methodClass) throw new Error();
 
-            // var classOrPackageInfo = await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass);
-            // if (!classOrPackageInfo) return null;
-            // if (classOrPackageInfo.type != "class") return null;
+                // var classOrPackageInfo = await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass);
+                // if (!classOrPackageInfo) return null;
+                // if (classOrPackageInfo.type != "class") return null;
 
-            let methodInfo;//: ClassInfo = classOrPackageInfo.info;
-            //if the member is inherited, look in the class where it was inherited from
-            while (true) {
-                let classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass))?.info;
-                if (!classInfo) return null;
-                methodInfo = classInfo.members?.[methodName] ?? classInfo.statics?.[methodName];
-                if (!methodInfo) {
-                    methodClass = methodInfo?.overriddenFrom ?? classInfo?.superClass;
+                // let methodInfo;//: ClassInfo = classOrPackageInfo.info;
+                //if the member is inherited, look in the class where it was inherited from
+                while (true) {
+                    let classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodClass))?.info;
+                    if (!classInfo) return null;
+                    methodInfo = classInfo.members?.[methodName] ?? classInfo.statics?.[methodName];
+                    if (!methodInfo) {
+                        methodClass = methodInfo?.overriddenFrom ?? classInfo?.superClass;
+                    }
+                    else {
+                        break;
+                    }
+
                 }
-                else {
-                    break;
-                }
+
+                if (!methodInfo || methodInfo.type != "function") return null;
 
             }
 
-            if (!methodInfo || methodInfo.type != "function") return null;
 
             let paramList = methodInfo?.jsdoc?.["@param"];
 
@@ -280,7 +290,7 @@ export class Server {
             let source: string = document.getText();
 
             //find number of characters til the end of word
-            let t = source.substring(caretIndex);
+            var t = source.substring(caretIndex);
             let matches = (/\w*/).exec(t);
             let tilEow = matches?.[0]?.length;
             if (tilEow == null) throw new Error();
@@ -292,7 +302,9 @@ export class Server {
 
 
             //check if it's a class
-            let classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(expr))?.info;
+            var u = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(expr));
+            if (u && u.type != "class") return null;
+            let classInfo = u?.info;
             if (classInfo) {
                 let sourceUri = await context.getSourceUriForClass(expr);
                 let start = classInfo.clazz.location.start;
@@ -324,6 +336,7 @@ export class Server {
 
                 //if the member is inherited, look in the class where it was inherited from
                 while (true) {
+                    if (!className) return null;
                     classInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(className))?.info;
                     if (!classInfo) return null;
                     let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
