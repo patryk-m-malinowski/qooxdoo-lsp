@@ -300,6 +300,44 @@ export class Server {
             if (!expr || expr.split('').indexOf('.') == -1) return null;
             if (expr.startsWith("new ")) expr = expr.substring("new ".length);
 
+            //check for getwidget
+            let getWidgetMatch = rfind(source, caretIndex, /this\.getWidget\("\w+/g);
+            if (getWidgetMatch && getWidgetMatch.end == caretIndex) {
+                let widgetId = expr;
+                let searchDocument = document;
+                let searchSource = document.getText();
+                if (!searchSource) throw new Error();
+                let searchDocumentClassName = getClassNameFromSource(searchSource);
+                if (!searchDocumentClassName) return null;
+                
+
+                /**class info json */
+                let searchDocumentClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(searchDocumentClassName))?.info;
+                while (true) {
+                    let caseMatch = searchSource.search(`case "${widgetId}":`);
+                    if (caseMatch) {
+                        let caseLocation = searchDocument.positionAt(caseMatch);
+                        return [
+                            Location.create(searchDocument.uri, {
+                                start: {
+                                    line: caseLocation.line,
+                                    character: caseLocation.character
+                                },
+                                end: caseLocation
+                            })
+                        ];
+                    } else {
+                        //go to parent class
+                        let superClass = searchDocumentClassInfo.superClass;
+                        if (!superClass) break;
+                        const classUri = await context.getSourceUriForClass(superClass);
+                        if (!classUri) return null;
+                        const searchDocumentUri = classUri; //todo improve this!
+                        searchDocument = documents.get(searchDocumentUri) ?? (function () { throw new Error })();
+                        searchSource = searchDocument.getText();
+                    }
+                }
+            }
 
             //check if it's a class
             var u = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(expr));
