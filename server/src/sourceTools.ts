@@ -3,16 +3,7 @@ import { regexes } from './regexes';
 import { rfind } from './search';
 
 const BRACKETS: string = "(){}[]";
-/**
- * Returns the a member chain expression (obj.property1.property2) which ends on pos.
- * @param source 
- * @param pos 
- */
-export function getObjectExpressionEndingAt(source: string, pos: integer): string | null {
-	let findResult = rfind(source, pos, regexes.OBJECT_EXPRN);
-	if (findResult?.end == pos) return findResult.match;
-	return null;
-}
+
 
 enum BracketType { OPENING, CLOSING }
 
@@ -38,7 +29,7 @@ function findMatchingBracket(source: string, pos: number): number {
 	//if our bracket is opening, we are going forwards
 	if (getBracketType(source.charAt(pos)) == BracketType.OPENING) {
 		pos++;
-		for (; pos < source.length; pos++) {
+		for (; pos < source.length && stack.length > 0; pos++) {
 			if (BRACKETS.includes(source.charAt(pos))) {
 				const encounteredBracket = source.charAt(pos);
 				if (getBracketType(encounteredBracket) == BracketType.OPENING) {
@@ -52,13 +43,14 @@ function findMatchingBracket(source: string, pos: number): number {
 		}
 	} else {
 		pos--;
-		for (; pos < source.length; pos--) {
+		for (; pos < source.length && stack.length > 0; pos--) {
 			if (BRACKETS.includes(source.charAt(pos))) {
 				const encounteredBracket = source.charAt(pos);
 				if (getBracketType(encounteredBracket) == BracketType.OPENING) {
 					if (stack.pop() != getOpposingBracket(encounteredBracket)) {
 						return -1;
-					}
+					} else break;
+
 				} else {
 					stack.push(encounteredBracket);
 				}
@@ -71,17 +63,18 @@ function findMatchingBracket(source: string, pos: number): number {
 
 }
 
-export function getObjectExpressionEndingAT(source: string, pos: integer): string | null {
+export function getObjectExpressionEndingAt(source: string, pos: integer): string | null {
 	if (BRACKETS.includes(source.charAt(pos - 1))) {
-		const matchingBracketIndex = findMatchingBracket(source, pos);
-		return getObjectExpressionEndingAT(source, matchingBracketIndex);
+		const matchingBracketIndex = findMatchingBracket(source, pos - 1);
+		if (matchingBracketIndex == -1) return null;
+		return getObjectExpressionEndingAt(source, matchingBracketIndex) + source.substring(matchingBracketIndex, pos);
 	}
 
 	let identifierFindInfo = rfind(source, pos, regexes.IDENTIFIER);
 	if (identifierFindInfo) {
 		let { start: identifierStart, match: identifier } = identifierFindInfo;
 		if (source.charAt(identifierStart - 1) == '.') {
-			return getObjectExpressionEndingAt(source, identifierStart - 1) + identifier
+			return getObjectExpressionEndingAt(source, identifierStart - 1) + '.' + identifier
 		}
 
 		let newFindInfo = rfind(source, identifierStart, /new\w+/g);
@@ -90,6 +83,8 @@ export function getObjectExpressionEndingAT(source: string, pos: integer): strin
 
 			return source.substring(newStart, pos);
 		}
+
+		return identifier;
 	}
 
 	return null;

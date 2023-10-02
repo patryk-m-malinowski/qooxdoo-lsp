@@ -2,9 +2,9 @@ import { CompletionItem, CompletionItemKind, CompletionParams, CompletionTrigger
 import { ClassInfo, PackageInfo } from './QxClassDb';
 import { Server } from './server'
 import { Context } from './Context';
-import { getObjectExpressionEndingAt } from './sourceTools';
 import { rfind } from './search';
 import { regexes } from './regexes';
+import { getObjectExpressionEndingAt } from './sourceTools';
 
 
 const RGX_IDENTIFIER = "[A-Za-z][A-Za-z_0-9]*";
