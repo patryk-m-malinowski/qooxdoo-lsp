@@ -63,5 +63,9 @@
     "mocha": "^9.2.1",
     "typescript": "^4.9.5",
     "vscode": "^1.1.34"
+  },
+  "dependencies": {
+    "@vscode/vsce": "^2.21.1",
+    "vsce": "^2.15.0"
   }
 }
