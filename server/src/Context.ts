@@ -54,8 +54,9 @@ export class Context {
 	public async getExpressionType(source: string, sourcePos: number, expression: string): Promise<TypeInfo | null> {
 		let ast: any = parse(expression); //todo improve this
 
+
 		if (expression == "this") {
-			var rgx = new RegExp(regexes.RGX_CLASSDEF, "g");
+			var rgx = new RegExp(regexes.RGX_CLASSDEF, "g"); //todo use getclassnamefromfile
 			let groups = rgx.exec(source);
 			let className = groups?.at(1);
 			if (!className) return null;
@@ -99,11 +100,16 @@ export class Context {
 				return returnType ? { category: "function", typeName: "", returnType: returnType } : null;
 			}
 		} else if (ast.type == "CallExpression") {
+			// let objectTypeInfo = await this.getExpressionType(source, sourcePos, objectExprn);
+			// if (!objectTypeInfo) return null;
+			// if (ast.callee.type == "MemberExpression" && objectTypeCategory == "qxObject" && propertyName == "set") {
+			// 	return objectTypeName;
+			// }
 			let functionType = await this.getExpressionType(source, sourcePos, getSourceOfAst(ast.callee, expression));
 			if (functionType?.category != "function") return null; //todo log error
 			return functionType.returnType ?? null;
 		} else if (ast.type == "NewExpression") {
-			let className = getSourceOfAst(ast, expression);
+			let className = getSourceOfAst(ast.callee, expression);
 			if (!this.qxClassDb.classExists(className)) return null;
 			return { category: "qxObject", typeName: className };
 		} else if (ast.type == "Identifier") {

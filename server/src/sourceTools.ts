@@ -14,6 +14,13 @@ function getBracketType(bracket: string): BracketType {
 		: BracketType.OPENING
 }
 
+export function getClassNameFromSource(source: string): string | null {
+	var rgx = new RegExp(regexes.RGX_CLASSDEF, "g");
+	let groups = rgx.exec(source);
+	let className = groups?.at(1);
+	return className ?? null;
+}
+
 function getOpposingBracket(bracket: string) {
 	const bracketIndex = BRACKETS.indexOf(bracket);
 	const bracketType = getBracketType(bracket);
@@ -77,8 +84,8 @@ export function getObjectExpressionEndingAt(source: string, pos: integer): strin
 			return getObjectExpressionEndingAt(source, identifierStart - 1) + '.' + identifier
 		}
 
-		let newFindInfo = rfind(source, identifierStart, /new\w+/g);
-		if (newFindInfo) {
+		let newFindInfo = rfind(source, identifierStart, /new\s+/g, true);
+		if (newFindInfo && newFindInfo.end == identifierStart) {
 			let { start: newStart } = newFindInfo;
 
 			return source.substring(newStart, pos);

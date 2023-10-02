@@ -30,7 +30,7 @@ import { ClassInfo, QxClassDb } from "./QxClassDb";
 import { rfind } from './search';
 import { Context, TypeInfo } from './Context';
 import { uriToPath } from './files';
-import { getObjectExpressionEndingAt } from './sourceTools';
+import { getClassNameFromSource, getObjectExpressionEndingAt } from './sourceTools';
 import { regexes } from './regexes';
 import { strings } from './strings';
 
@@ -297,7 +297,7 @@ export class Server {
             let endOfWordPos: number = caretIndex + tilEow;
 
             let expr = getObjectExpressionEndingAt(source, endOfWordPos);
-            if (!expr || expr.split('').indexOf('.') == -1) return null;
+            if (!expr) return null;
             if (expr.startsWith("new ")) expr = expr.substring("new ".length);
 
             //check for getwidget
@@ -353,6 +353,7 @@ export class Server {
                     ];
                 }
             } else { // it means it's a member of a class
+                if (!expr || expr.split('').indexOf('.') == -1) return null;
                 let t = expr.split('.');
                 let memberName: string | null = t.pop() ?? null;
                 if (!memberName) return null;

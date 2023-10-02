@@ -1,5 +1,5 @@
 import { CompletionItem, CompletionItemKind, CompletionParams, CompletionTriggerKind, TextDocument, integer } from 'vscode-languageserver';
-import { ClassInfo, PackageInfo } from './QxClassDb';
+import { ClassInfo, PackageInfo, QxClassDb } from './QxClassDb';
 import { Server } from './server'
 import { Context } from './Context';
 import { rfind } from './search';
@@ -84,6 +84,8 @@ export class CompletionEngine {
       if (typeInfo)
         return await getCompletionItemsForClassOrPackage(typeInfo?.typeName) ?? [];
 
+    } else {
+      return classDb.classNames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
     }
     return [];
   }
