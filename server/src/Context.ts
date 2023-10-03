@@ -85,6 +85,7 @@ export class Context {
 			let allMembers = { ...typeInfo.members, ...typeInfo.statics };
 			const memberName = ast.property.name;
 			const memberInfo = allMembers[memberName];
+			if (!memberInfo) return null;
 			if (memberInfo.type == "variable") {
 				let typeInfo = memberInfo["@type"]?.[0].body;
 				if (!typeInfo) return null;
