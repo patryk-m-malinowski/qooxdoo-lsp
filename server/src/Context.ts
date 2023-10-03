@@ -23,7 +23,7 @@ export interface TypeInfo {
 }
 
 function parse(exprn: string) {
-	return acorn.parseExpressionAt(exprn, 0, { ecmaVersion: 6 });
+	return acorn.parseExpressionAt(exprn, 0, { ecmaVersion: 6, allowSuperOutsideMethod: true });
 }
 
 function getSourceOfAst(ast: acorn.Node, source: string) {
