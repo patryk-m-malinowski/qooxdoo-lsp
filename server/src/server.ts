@@ -301,19 +301,21 @@ export class Server {
             if (expr.startsWith("new ")) expr = expr.substring("new ".length);
 
             //check for getwidget
-            let getWidgetMatch = rfind(source, caretIndex, /this\.getWidget\("\w+/g);
+            let getWidgetMatch = rfind(source, caretIndex, /\.get((widget)|(childcontrol)|(qxobject))\("\w+/gi);
             if (getWidgetMatch && getWidgetMatch.end == caretIndex) {
                 let widgetId = expr;
-                let searchDocument = document;
-                let searchSource = document.getText();
-                if (!searchSource) throw new Error();
-                let searchDocumentClassName = getClassNameFromSource(searchSource);
-                if (!searchDocumentClassName) return null;
-
+                let getWidgetExprn = getObjectExpressionEndingAt(source, getWidgetMatch.start);
+                let objectClassName = getWidgetExprn && (await context.getExpressionType(source, caretIndex, getWidgetExprn))?.typeName
+                let searchDocumentClassInfo: ClassInfo | null = objectClassName == null ? null : (await Context.getInstance().qxClassDb.getClassOrPackageInfo(objectClassName))?.info;
+                let searchDocumentUri = objectClassName == null ? null : await context.getSourceUriForClass(objectClassName);
+                let searchDocument = searchDocumentUri == null ? null : documents.get(searchDocumentUri);
+                let searchSource = searchDocument?.getText();
+                if (!searchSource) return null;
 
                 /**class info json */
-                let searchDocumentClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(searchDocumentClassName))?.info;
                 while (true) {
+                    if (!(searchSource && searchDocument?.uri)) throw new Error();
+
                     let caseMatch = searchSource.search(`case "${widgetId}":`);
                     if (caseMatch != -1) {
                         let caseLocation = searchDocument.positionAt(caseMatch);
@@ -328,7 +330,7 @@ export class Server {
                         ];
                     } else {
                         //go to parent class
-                        let superClass = searchDocumentClassInfo.superClass;
+                        let superClass = searchDocumentClassInfo?.superClass;
                         if (!superClass) break;
                         const classUri = await context.getSourceUriForClass(superClass);
                         if (!classUri) return null;
