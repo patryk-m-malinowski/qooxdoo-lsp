@@ -100,11 +100,13 @@ export class Context {
 				return returnType ? { category: "function", typeName: "", returnType: returnType } : null;
 			}
 		} else if (ast.type == "CallExpression") {
-			// let objectTypeInfo = await this.getExpressionType(source, sourcePos, objectExprn);
-			// if (!objectTypeInfo) return null;
-			// if (ast.callee.type == "MemberExpression" && objectTypeCategory == "qxObject" && propertyName == "set") {
-			// 	return objectTypeName;
-			// }
+			let objectExprn: string = getSourceOfAst(ast.callee.object, expression);
+			let objectTypeInfo: TypeInfo | null = await this.getExpressionType(source, sourcePos, objectExprn);
+			if (!objectTypeInfo) return null;
+			let propertyName: string = ast.callee.property.name;
+			if (ast.callee.type == "MemberExpression" && objectTypeInfo.category == "qxObject" && propertyName == "set") {
+				return objectTypeInfo;
+			}
 			let functionType = await this.getExpressionType(source, sourcePos, getSourceOfAst(ast.callee, expression));
 			if (functionType?.category != "function") return null; //todo log error
 			return functionType.returnType ?? null;

@@ -309,13 +309,13 @@ export class Server {
                 if (!searchSource) throw new Error();
                 let searchDocumentClassName = getClassNameFromSource(searchSource);
                 if (!searchDocumentClassName) return null;
-                
+
 
                 /**class info json */
                 let searchDocumentClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(searchDocumentClassName))?.info;
                 while (true) {
                     let caseMatch = searchSource.search(`case "${widgetId}":`);
-                    if (caseMatch) {
+                    if (caseMatch != -1) {
                         let caseLocation = searchDocument.positionAt(caseMatch);
                         return [
                             Location.create(searchDocument.uri, {
@@ -333,7 +333,9 @@ export class Server {
                         const classUri = await context.getSourceUriForClass(superClass);
                         if (!classUri) return null;
                         const searchDocumentUri = classUri; //todo improve this!
-                        searchDocument = documents.get(searchDocumentUri) ?? (function () { throw new Error })();
+                        const searchDocumentMaybe: TextDocument | null = documents.get(searchDocumentUri) ?? null;
+                        if (!searchDocumentMaybe) return null;
+                        searchDocument = searchDocumentMaybe;
                         searchSource = searchDocument.getText();
                     }
                 }
