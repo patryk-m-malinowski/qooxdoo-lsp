@@ -4,16 +4,16 @@
  */
 
 import { URI } from 'vscode-uri'
-import { QxClassDb } from './QxClassDb'
+import { ClassInfo, QxClassDb } from './QxClassDb'
 import { regexes } from './regexes'
 import { rfind } from './search'
 import { Server } from './server'
 import path = require('path')
 import fs = require('fs/promises');
 import { existsSync } from 'fs'
-import acorn = require('acorn')
+import babel = require('@babel/parser')
+import { isBetween } from './math'
 
-type Node = acorn.Node;
 
 export interface TypeInfo {
 	category: "qxPackage" | "qxClass" | "qxObject" | "function",
@@ -23,10 +23,10 @@ export interface TypeInfo {
 }
 
 function parse(exprn: string) {
-	return acorn.parseExpressionAt(exprn, 0, { ecmaVersion: 6, allowSuperOutsideMethod: true });
+	return babel.parseExpression(exprn, { allowSuperOutsideMethod: true, errorRecovery: true });
 }
 
-function getSourceOfAst(ast: acorn.Node, source: string) {
+function getSourceOfAst(ast: any, source: string) {
 	return source.substring(ast.start, ast.end);
 }
 
@@ -54,13 +54,20 @@ export class Context {
 	public async getExpressionType(source: string, sourcePos: number, expression: string): Promise<TypeInfo | null> {
 		let ast: any = parse(expression); //todo improve this
 
+		var rgx = new RegExp(regexes.RGX_CLASSDEF, "g"); //todo use getclassnamefromfile
+		let groups = rgx.exec(source);
+		let thisClassName = groups?.at(1);
+		if (expression == "super") {
+			let rgxExtends = new RegExp(`extend:\\s*(${regexes.MEMBER_CHAIN})`, 'g');
+			let extendsMatch = rgxExtends.exec(source);
+			if (!extendsMatch) return null;
+			let superClassName = extendsMatch[1];
+			return { category: "qxObject", typeName: superClassName };
+		}
+		else if (expression == "this") {
 
-		if (expression == "this") {
-			var rgx = new RegExp(regexes.RGX_CLASSDEF, "g"); //todo use getclassnamefromfile
-			let groups = rgx.exec(source);
-			let className = groups?.at(1);
-			if (!className) return null;
-			return { category: "qxObject", typeName: className };
+			if (!thisClassName) return null;
+			return { category: "qxObject", typeName: thisClassName };
 		} else if (ast.type == "MemberExpression") {
 			let classOrPackageInfo = await this.qxClassDb.getClassOrPackageInfo(expression);
 			if (classOrPackageInfo) {
