@@ -53,7 +53,13 @@ export class Context {
 	 * Returns the type of the expression (expression) in the source (source) at position (sourcePos)
 	 */
 	public async getExpressionType(source: string, sourcePos: number, expression: string): Promise<TypeInfo | null> {
-		let ast: any = parse(expression); //todo improve this
+
+		let ast: any;
+		try {
+			ast = parse(expression); //todo improve this
+		} catch (e) {
+			return null;
+		}
 
 		var rgx = new RegExp(regexes.RGX_CLASSDEF, "g"); //todo use getclassnamefromfile
 		let groups = rgx.exec(source);
@@ -125,22 +131,42 @@ export class Context {
 			let varName = expression;
 			let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(${regexes.OBJECT_EXPRN})`, "g");
 			let searchInfo = rfind(source, sourcePos, assignmentRegex);
-			if (searchInfo) return this.getExpressionType(source, searchInfo.start, searchInfo.groups[1]);
-			else {
-				//try to lookup in method parameters
-				if (!thisClassName) return null;
-				let thisClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(thisClassName))?.info;
-				if (!thisClassInfo) return null;
-				let methodInfo: any = Object.values({ ...thisClassInfo.members, ...thisClassInfo.statics }).find((methodInfo: any) => {
-					return !!methodInfo.location && isBetween(sourcePos, methodInfo.location.start.index, methodInfo.location.end.index);
-				});
-				if (!methodInfo) return null;
-				let paramInfo = methodInfo.jsdoc?.["@param"].find((p: any) => p.paramName == varName)
-				if (!paramInfo) return null;
+			if (searchInfo) {
+				let typeInfo = await this.getExpressionType(source, searchInfo.start, searchInfo.groups[1]);
+				if (typeInfo) return typeInfo;
+			}
+			//try to lookup in method parameters
+			if (!thisClassName) return null;
+			let thisClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(thisClassName))?.info;
+			if (!thisClassInfo) return null;
+			let methodInfo: any;
 
-				return { category: "qxObject", typeName: paramInfo.type };
+			var methodName: string;
+			for (const [memberName, memberInfo_] of Object.entries({ ...thisClassInfo.members, ...thisClassInfo.statics })) {
+				let memberInfo = (memberInfo_ as any)
+				if (!!memberInfo.location && isBetween(sourcePos, memberInfo.location.start.index, memberInfo.location.end.index)) {
+					methodName = memberName;
+					methodInfo = memberInfo;
+					break;
+				}
 			}
 
+			if (methodInfo) {
+				async function getParamType(methodInfo: any): Promise<TypeInfo | null> {
+					let paramInfo = methodInfo.jsdoc?.["@param"].find((p: any) => p.paramName == varName)
+					if (paramInfo)
+						return { category: "qxObject", typeName: paramInfo.type };
+					else if (methodInfo.overriddenFrom) {
+						let superClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(methodInfo.overriddenFrom))?.info;
+						if (superClassInfo) {
+							let superMethodInfo = superClassInfo.members[methodName];
+							if (superMethodInfo) return getParamType(superMethodInfo)
+						}
+					}
+					return null;
+				}
+				return getParamType(methodInfo);
+			}
 
 		}
 
