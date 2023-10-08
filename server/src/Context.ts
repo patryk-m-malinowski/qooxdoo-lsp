@@ -13,6 +13,7 @@ import fs = require('fs/promises');
 import { existsSync } from 'fs'
 import babel = require('@babel/parser')
 import { isBetween } from './math'
+import { TextDocument } from 'vscode-languageserver-textdocument'
 
 
 export interface TypeInfo {
@@ -94,14 +95,12 @@ export class Context {
 			const memberInfo = allMembers[memberName];
 			if (!memberInfo) return null;
 			if (memberInfo.type == "variable") {
-				let typeInfo = memberInfo["@type"]?.[0].body;
+				let typeInfo = memberInfo.jsdoc?.["@type"]?.[0].body;
 				if (!typeInfo) return null;
 				let typeMatch = /\{(.*)\}/.exec(typeInfo);
 				if (!typeMatch) return null;
 				let type: string = removeTemplateArgs(typeMatch[1]);
-				if (await this.qxClassDb.getClassOrPackageInfo(type) == null) {
-					return { category: "qxObject", typeName: type };
-				} else return null;
+				return { category: "qxObject", typeName: type }
 			} else if (memberInfo.type == "function") {
 				const returnTypeName = removeTemplateArgs(memberInfo["jsdoc"]?.["@return"]?.[0].type as string);
 				const returnType: TypeInfo = { category: "qxObject", typeName: returnTypeName }; //todo change to object
@@ -126,8 +125,22 @@ export class Context {
 			let varName = expression;
 			let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(${regexes.OBJECT_EXPRN})`, "g");
 			let searchInfo = rfind(source, sourcePos, assignmentRegex);
-			if (!searchInfo) return null;
-			return this.getExpressionType(source, searchInfo.start, searchInfo.groups[1]);
+			if (searchInfo) return this.getExpressionType(source, searchInfo.start, searchInfo.groups[1]);
+			else {
+				//try to lookup in method parameters
+				if (!thisClassName) return null;
+				let thisClassInfo = (await Context.getInstance().qxClassDb.getClassOrPackageInfo(thisClassName))?.info;
+				if (!thisClassInfo) return null;
+				let methodInfo: any = Object.values({ ...thisClassInfo.members, ...thisClassInfo.statics }).find((methodInfo: any) => {
+					return !!methodInfo.location && isBetween(sourcePos, methodInfo.location.start.index, methodInfo.location.end.index);
+				});
+				if (!methodInfo) return null;
+				let paramInfo = methodInfo.jsdoc?.["@param"].find((p: any) => p.paramName == varName)
+				if (!paramInfo) return null;
+
+				return { category: "qxObject", typeName: paramInfo.type };
+			}
+
 
 		}
 
