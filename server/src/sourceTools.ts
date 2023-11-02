@@ -9,11 +9,16 @@ enum BracketType { OPENING, CLOSING }
 
 function getBracketType(bracket: string): BracketType {
 	const bracketIndex = BRACKETS.indexOf(bracket);
-	if (bracketIndex == -1) throw new Error();
+	if (bracketIndex == -1) throw new Error("Bracket must be one of (,),[,],{,}");
 	return bracketIndex % 2 ? BracketType.CLOSING
 		: BracketType.OPENING
 }
 
+/**
+ * 
+ * @param source Qx class source
+ * @returns Name of class if it can find it, null otherwise
+ */
 export function getClassNameFromSource(source: string): string | null {
 	var rgx = new RegExp(regexes.RGX_CLASSDEF, "g");
 	let groups = rgx.exec(source);
@@ -27,6 +32,12 @@ function getOpposingBracket(bracket: string) {
 	return BRACKETS.charAt(bracketIndex + bracketType == BracketType.OPENING ? 1 : -1);
 }
 
+/**
+ * 
+ * @param source source code of where to find matching bracket
+ * @param pos Zero-based index in `source`
+ * @returns 
+ */
 function findMatchingBracket(source: string, pos: number): number {
 	if (!BRACKETS.includes(source.charAt(pos)))
 		throw new Error("Character is not a bracket!");
@@ -70,6 +81,12 @@ function findMatchingBracket(source: string, pos: number): number {
 
 }
 
+/**
+ * Returns the longest-possible member expression (basically it works like your standard IntelliSense!)
+ * @param source Source code of where expression is located
+ * @param pos Zero-based position at which the expression ends
+ * @returns 
+ */
 export function getObjectExpressionEndingAt(source: string, pos: integer): string | null {
 	if (BRACKETS.includes(source.charAt(pos - 1))) {
 		const matchingBracketIndex = findMatchingBracket(source, pos - 1);

@@ -6,13 +6,12 @@ import path = require("path")
  *  Format is exactly the same as the JSON files found in compiled/xxx/transpiled  
  * */
 export type ClassInfo = any;
+
 export interface PackageInfo {
   children: PackageChildType[]
 }
 
 export type PackageChildType = { type: "class" | "package", name: string };
-
-
 
 /**
  * This class stores all information about all Qooxdoo classes and packages and their hierarchy
@@ -33,7 +32,6 @@ export class QxClassDb {
     for (const filePath of allFiles) {
       await this.readClassJson(filePath);
     }
-
   }
 
   /**
@@ -100,22 +98,7 @@ export class QxClassDb {
     classNode.jsonFilePath = filePath;
   }
 
-  //todo getridof
-  // /**
-  //  * Returns information about a member of a class. Return type is any because the data is taken from the Qooxdoo compilation database JSON file
-  //  * @param className 
-  //  * @param memberName 
-  //  */
-  // public async getClassMemberInfo(className: string, memberName: string): Promise<any> {
-  //   let classInfo = (await this.getClassOrPackageInfo(className))?.info;
-  //   if (!classInfo) throw new Error("Class " + className + " does not exist in project");
-
-
-
-  // }
 }
-
-
 
 /** A tree representing the hierarchy of packages and classes in the project */
 enum NodeType { ROOT, CLASS, PACKAGE };
