@@ -1,9 +1,9 @@
 import { Location, TextDocument } from 'vscode-languageserver';
 import { QxProjectContext } from './QxProjectContext';
 import { ClassInfo } from './QxClassDb';
-import { rfind } from './search';
+import { rfind } from './rfind';
 import { getObjectExpressionEndingAt } from './sourceTools';
-import { regexes } from './regexes';
+import { parse, getSourceOfAst, Ast } from './parsing';
 import { strings } from './strings';
 import { getExpressionType } from './getExpressionType';
 
@@ -82,21 +82,13 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 			];
 		}
 	} else { // it means it's a member of a class
-		if (!expr || expr.split('').indexOf('.') == -1) return null;
-		let t = expr.split('.');
-		let memberName: string | null = t.pop() ?? null;
-		if (!memberName) return null;
-		let objectExpr = t?.join('.');
-		if (!objectExpr) throw new Error;
-		if (objectExpr == "this") {
-			let t = new RegExp(regexes.RGX_CLASSDEF).exec(source)?.at(1);
-			if (!t) return null; //todo complain
-			objectExpr = t;
-		};
+		const exprAst: Ast = parse(expr);
+		if (!exprAst || !["MemberExpression", "OptionalMemberExpression"].includes(exprAst.type)) return null;
+		let objectExpr: string = getSourceOfAst(exprAst.object, expr);
+		const memberName: string = exprAst.property.name;
 
 		let type = await getExpressionType(source, pos, objectExpr, context);
 		if (!type) return null;
-
 
 		let className = type.typeName;
 		let location: any;

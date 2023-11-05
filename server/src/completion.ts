@@ -1,7 +1,7 @@
 import { CompletionItem, CompletionItemKind } from 'vscode-languageserver';
 import { ClassInfo, PackageInfo, QxClassDb } from './QxClassDb';
 import { regexes } from './regexes';
-import { rfind } from './search';
+import { rfind } from './rfind';
 import { getObjectExpressionEndingAt } from './sourceTools';
 import { getExpressionType } from './getExpressionType'
 import { QxProjectContext } from './QxProjectContext';
@@ -16,7 +16,7 @@ import { QxProjectContext } from './QxProjectContext';
 export async function getCompletionSuggestions(source: string, offset: number, context: QxProjectContext): Promise<CompletionItem[] | null> {
 	const qxClassDb: QxClassDb = context.qxClassDb;
 
-	let dotPos = rfind(source, offset, `\\.(${regexes.IDENTIFIER})?`, true);
+	let dotPos = rfind(source, offset, `(\\?)?\\.(${regexes.IDENTIFIER})?`, true);
 	const exprn: string | null = dotPos && getObjectExpressionEndingAt(source, dotPos.start);
 
 	if (!exprn)
@@ -68,5 +68,5 @@ export async function getCompletionSuggestions(source: string, offset: number, c
 		}
 	}
 
-	return null;
+	return completionItems;
 } 

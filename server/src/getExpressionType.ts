@@ -1,9 +1,9 @@
 import { QxProjectContext } from './QxProjectContext';
 import { isBetween } from './math';
 import { regexes } from './regexes';
-import { rfind } from './search';
-import babel = require("@babel/parser");
+import { rfind } from './rfind';
 import { getClassNameFromSource } from './sourceTools';
+import {parse, getSourceOfAst } from './parsing';
 
 /**
  * Object representing type information of an expression.
@@ -77,7 +77,7 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 	}
 
 	async function tryObjectExpression(): Promise<TypeInfo | null> {
-		if (expressionAst.type !== "MemberExpression") return null;
+		if (!["OptionalMemberExpression", "MemberExpression"].includes(expressionAst.type)) return null;
 
 		let objectString = getSourceOfAst(expressionAst.object, expression);
 
@@ -107,7 +107,7 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 	}
 
 	async function tryCallExpression(): Promise<TypeInfo | null> {
-		if (expressionAst.type !== "CallExpression") return null;
+		if (!["OptionalCallExpression", "CallExpression"].includes(expressionAst.type)) return null;
 		let objectExprn: string = getSourceOfAst(expressionAst.callee.object, expression);
 		let objectTypeInfo: TypeInfo | null = await getExpressionType(source, sourcePos, objectExprn, context);
 		if (!objectTypeInfo) return null;
@@ -130,7 +130,7 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 	async function tryIdentifier(): Promise<TypeInfo | null> {
 		if (expressionAst.type !== "Identifier") return null;
 		let varName = expression;
-		let assignmentRegex = new RegExp(`${varName}\\s*=\\s*([.\n]*);`, "g");
+		let assignmentRegex = new RegExp(`${varName}\\s*=\\s*(.*?);`, "g");
 		let searchInfo = rfind(source, sourcePos, assignmentRegex);
 		if (searchInfo) {
 			let typeInfo = await getExpressionType(source, searchInfo.start, searchInfo.groups[1], context);
@@ -178,27 +178,9 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 /**
  * Symbolic type for ASTs returned by Babel
  */
-type Ast = any;
 
-function parse(exprn: string): Ast | null {
-	let out: Ast | null = null;
-	try {
-		out =babel.parseExpression(exprn, { allowSuperOutsideMethod: true, errorRecovery: true }); 
-	} catch (e) {
-		return null;
-	}
-	return out;
-}
 
-/**
- * 
- * @param ast AST of expression (as returned by Babel)
- * @param source Original source which the AST is derived from
- * @returns 
- */
-function getSourceOfAst(ast: Ast, source: string) {
-	return source.substring(ast.start, ast.end);
-}
+
 
 function removeTemplateArgs(typeName: string) {
 	return typeName.replace(/<.*>/, "");

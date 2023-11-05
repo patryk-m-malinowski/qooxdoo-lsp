@@ -2,14 +2,14 @@
     "name": "qooxdoo-lsp-server",
     "description": "Implementation of a language server.",
     "version": "0.1.0",
-    "author": "Dmitrii Zolotov (goldim) zolotovdy@yandex.ru",
+    "author": "Patryk Malinowski",
     "license": "MIT",
     "engines": {
         "node": "*"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/goldim/qooxdoo-lsp"
+        "url": "https://github.com/p9malino26/qooxdoo-lsp"
     },
     "dependencies": {
         "acorn": "^8.8.2",
@@ -19,4 +19,5 @@
         "vscode-uri": "^3.0.7"
     },
     "scripts": {}
+    
 }

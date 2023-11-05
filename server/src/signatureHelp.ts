@@ -1,5 +1,5 @@
 import { ParameterInformation, SignatureHelp } from 'vscode-languageserver';
-import { rfind } from './search';
+import { rfind } from './rfind';
 import { getObjectExpressionEndingAt } from './sourceTools';
 import { QxProjectContext } from './QxProjectContext';
 import { TypeInfo, getExpressionType } from './getExpressionType';
@@ -43,7 +43,7 @@ export async function getSignatureHint(source: string, pos: number, context: QxP
 
 		//if the member is inherited, look in the class where it was inherited from
 		while (true) {
-			let classInfo = (await context.qxClassDb.getClassOrPackageInfo(methodClass))?.info;
+			let classInfo = methodClass ? (await context.qxClassDb.getClassOrPackageInfo(methodClass))?.info : null;
 			if (!classInfo) return null;
 			methodInfo = classInfo.members?.[methodName] ?? classInfo.statics?.[methodName];
 			if (!methodInfo) {
