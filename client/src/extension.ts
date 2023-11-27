@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { workspace, ExtensionContext } from 'vscode';
+import { workspace, ExtensionContext, commands, window } from 'vscode';
 
 import {
     LanguageClient,
@@ -48,6 +48,14 @@ export function activate(context: ExtensionContext) {
         clientOptions
     );
 
+
+    context.subscriptions.push(
+        commands.registerCommand("qxLsp.changeCompiledDir", async () => {
+            const chosenFolder = await window.showWorkspaceFolderPick();
+            if (!chosenFolder) return;
+            client.sendRequest("changeCompileDir", {uri: chosenFolder.uri});
+        })
+    );
     // Start the client. This will also launch the server
     client.start();
 }

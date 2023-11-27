@@ -23,13 +23,12 @@ import {
   createConnection,
   integer
 } from 'vscode-languageserver/node';
+import { URI, uriToFsPath } from 'vscode-uri/lib/umd/uri';
 import { QxProjectContext } from './QxProjectContext';
 import { getCompletionSuggestions } from './completion';
 import { findDefinitions } from './definition';
 import { uriToPath } from './files';
 import { getSignatureHint } from './signatureHelp';
-
-
 
 function startServer() {
 
@@ -191,6 +190,16 @@ function startServer() {
   );
 
 
+  connection.onRequest("changeCompileDir", async (params: { uri: URI }) => {
+    const dirPath = uriToFsPath(params.uri, false);
+    try {
+      context.qxClassDb.initialize(dirPath);
+    } catch (e) {
+      connection.sendNotification("Error processing compiled path.");
+    }
+  });
+
+
   connection.onSignatureHelp(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
 
     let document = documents.get(params.textDocument.uri);
@@ -211,7 +220,7 @@ function startServer() {
 
     //find number of characters til the end of word
 
-  })
+  });
 
   // Make the text document manager listen on the connection
   // for open, change and close text document events

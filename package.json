@@ -44,7 +44,14 @@
           "description": "Traces the communication between VS Code and the language server."
         }
       }
-    }
+    },
+    "commands":[
+      {
+        "title": "Change compiled directory",
+        "category": "Qooxdoo",
+        "command": "qxLsp.changeCompiledDir"        
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
