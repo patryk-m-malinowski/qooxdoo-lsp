@@ -27,6 +27,9 @@ export class QxClassDb {
    * @param root The directory to get the qooxdoo files from.
    */
   async initialize(root: string): Promise<void> {
+    this.classNames.splice(0);    
+    this._namesTree.children!.splice(0);
+    
     let allFiles: string[] = await glob.glob('./compiled/*/transpiled/**/*.json', { absolute: true, cwd: path.join(root) });
 
     for (const filePath of allFiles) {
