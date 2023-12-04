@@ -56,13 +56,13 @@ export function activate(context: ExtensionContext) {
             client.sendRequest("changeCompileDir", {uri: chosenFolder.uri});
         })
     );
+
+    context.subscriptions.push(
+        commands.registerCommand("qxLsp.restartServer", async () => {
+            await client.stop();
+            await client.start();
+        })
+    );
     // Start the client. This will also launch the server
     client.start();
-}
-
-export function deactivate(): Thenable<void> | undefined {
-    if (!client) {
-        return undefined;
-    }
-    return client.stop();
 }

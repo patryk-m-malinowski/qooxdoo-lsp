@@ -12,6 +12,7 @@
         "url": "https://github.com/p9malino26/qooxdoo-lsp"
     },
     "dependencies": {
+        "@babel/parser": "^7.23.5",
         "acorn": "^8.8.2",
         "glob": "^10.2.3",
         "vscode-languageserver": "^7.0.0",
@@ -19,5 +20,4 @@
         "vscode-uri": "^3.0.7"
     },
     "scripts": {}
-    
 }
