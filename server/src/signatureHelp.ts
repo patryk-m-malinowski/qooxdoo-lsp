@@ -3,6 +3,7 @@ import { rfind } from './rfind';
 import { getObjectExpressionEndingAt } from './sourceTools';
 import { QxProjectContext } from './QxProjectContext';
 import { TypeInfo, getExpressionType } from './getExpressionType';
+import { ClassInfo, MethodInfo } from './ClassInfo';
 
 /**
  * Implementation for signature hint (function or method parameter hints)
@@ -21,16 +22,16 @@ export async function getSignatureHint(source: string, pos: number, context: QxP
 	let objAndMethod = getObjectExpressionEndingAt(source, bracketPos);
 	if (!objAndMethod) return null;
 
-	var methodInfo, methodName;
+	let methodInfo: MethodInfo | null, methodName: string;
 	//check if objectandmethod is a class, in which case provide constructor params
-	let classInfo;
-	if (objAndMethod.startsWith("new ") && (classInfo = (await context.qxClassDb.getClassOrPackageInfo(objAndMethod.substring("new ".length)))?.info)) {
+	let classInfo: ClassInfo | null = ((await context.qxClassDb.getClassOrPackageInfo(objAndMethod.substring("new ".length)))?.info) as any;
+	if (objAndMethod.startsWith("new ") && classInfo) {
 		methodInfo = classInfo?.construct;
 		methodName = objAndMethod;
 	} else {
 		const tokens = objAndMethod.split('.');
 		if (tokens.length < 2) return null;
-		methodName = tokens.pop();
+		methodName = tokens.pop() as string;
 		if (!methodName) throw new Error();
 
 		let object: string = tokens.join(".");
@@ -43,11 +44,11 @@ export async function getSignatureHint(source: string, pos: number, context: QxP
 
 		//if the member is inherited, look in the class where it was inherited from
 		while (true) {
-			let classInfo = methodClass ? (await context.qxClassDb.getClassOrPackageInfo(methodClass))?.info : null;
+			let classInfo: ClassInfo | null = methodClass ? (await context.qxClassDb.getClassOrPackageInfo(methodClass))?.info as any : null;
 			if (!classInfo) return null;
-			methodInfo = classInfo.members?.[methodName] ?? classInfo.statics?.[methodName];
+			methodInfo = (classInfo.members?.[methodName] ?? classInfo.statics?.[methodName]) as MethodInfo | null;
 			if (!methodInfo) {
-				methodClass = methodInfo?.overriddenFrom ?? classInfo?.superClass;
+				methodClass = classInfo?.superClass!;
 			}
 			else {
 				break;

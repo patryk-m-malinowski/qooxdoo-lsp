@@ -1,11 +1,7 @@
 import fs = require('fs/promises');
 import glob = require('glob');
 import path = require("path")
-
-/** Stores information regarding a Qooxdoo class e.g. the methods, properties, and members.
- *  Format is exactly the same as the JSON files found in compiled/xxx/transpiled  
- * */
-export type ClassInfo = any;
+import { ClassInfo } from './ClassInfo';
 
 export interface PackageInfo {
   children: PackageChildType[]
@@ -27,7 +23,7 @@ export class QxClassDb {
    * @param root The directory to get the qooxdoo files from.
    */
   async initialize(root: string): Promise<void> {
-    let allFiles: string[] = await glob.glob('./compiled/*/transpiled/**/*.json', { absolute: true, cwd: path.join(root) });
+    let allFiles: string[] = await glob.glob('./compiled/meta/**/*.json', { absolute: true, cwd: path.join(root) });
 
     for (const filePath of allFiles) {
       await this.readClassJson(filePath);
@@ -48,7 +44,7 @@ export class QxClassDb {
    * @param classOrPackageName Fully qualified name of class or package
    * @returns 
    */
-  public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: "class" | "package"; info: ClassInfo | PackageInfo; } | null> {
+public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: "class" | "package"; info: ClassInfo | PackageInfo; } | null> {
     if (!this._namesTree.containsNode(classOrPackageName)) return null;
 
     let node = this._namesTree.getNode(classOrPackageName);
@@ -57,11 +53,11 @@ export class QxClassDb {
         const packageChildren: PackageChildType[] = [];
         const packageNode = node as PackageNode;
         for (const child of packageNode.children) {
-          let childType: "class" | "package" = child.type == NodeType.CLASS ? "class"
+          let childType = child.type == NodeType.CLASS ? "class"
             : child.type == NodeType.PACKAGE ? "package"
               : "class";
 
-          packageChildren.push({ name: child.name, type: childType });
+          packageChildren.push({ name: child.name, type: childType as any });
         }
 
         return { type: "package", info: { children: packageChildren } };
@@ -97,7 +93,6 @@ export class QxClassDb {
     let classNode = node as ClassNode;
     classNode.jsonFilePath = filePath;
   }
-
 }
 
 /** A tree representing the hierarchy of packages and classes in the project */

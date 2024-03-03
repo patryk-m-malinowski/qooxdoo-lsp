@@ -1,6 +1,6 @@
 import { Location, TextDocument } from 'vscode-languageserver';
 import { QxProjectContext } from './QxProjectContext';
-import { ClassInfo } from './QxClassDb';
+import { ClassInfo } from './ClassInfo';
 import { rfind } from './rfind';
 import { getObjectExpressionEndingAt } from './sourceTools';
 import { parse, getSourceOfAst, Ast } from './parsing';
@@ -31,7 +31,7 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 		let widgetId = expr;
 		let getWidgetExprn = getObjectExpressionEndingAt(source, getWidgetMatch.start);
 		let objectClassName = getWidgetExprn && (await getExpressionType(source, pos, getWidgetExprn, context))?.typeName
-		let searchDocumentClassInfo: ClassInfo | null = objectClassName == null ? null : (await context.qxClassDb.getClassOrPackageInfo(objectClassName))?.info;
+		let searchDocumentClassInfo: ClassInfo | null = objectClassName == null ? null : (await context.qxClassDb.getClassOrPackageInfo(objectClassName))?.info as any;
 		let searchDocumentUri = objectClassName == null ? null : await context.getSourceUriForClass(objectClassName);
 		let searchDocument = searchDocumentUri == null ? null : context.projectDocumentsManager.get(searchDocumentUri);
 		let searchSource = searchDocument?.getText();
@@ -71,11 +71,11 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 	//check if it's a class
 	var u = (await context.qxClassDb.getClassOrPackageInfo(expr));
 	if (u && u.type != "class") return null;
-	let classInfo = u?.info;
+	let classInfo: ClassInfo | null = u?.info as any;
 	if (classInfo) {
 		let sourceUri = await context.getSourceUriForClass(expr);
-		let start = classInfo.clazz.location.start;
-		let end = classInfo.clazz.location.end;
+		let start = classInfo.location.start;
+		let end = classInfo.location.end;
 		if (sourceUri) {
 			return [
 				Location.create(sourceUri, { start: { line: start.line, character: start.column }, end: { line: end.line, character: end.column } })
@@ -92,12 +92,12 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 
 		let className = type.typeName;
 		let location: any;
-		let classInfo;
+		let classInfo: ClassInfo | null = null;
 
 		//if the member is inherited, look in the class where it was inherited from
 		while (true) {
 			if (!className) return null;
-			classInfo = (await context.qxClassDb.getClassOrPackageInfo(className))?.info;
+			classInfo = (await context.qxClassDb.getClassOrPackageInfo(className))?.info as any;
 			if (!classInfo) return null;
 			let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
 			location = memberInfo?.location;
@@ -112,7 +112,8 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 			}
 
 			if (!location) {
-				className = memberInfo?.overriddenFrom ?? classInfo?.superClass;
+				className = memberInfo?.overriddenFrom ?? classInfo?.superClass!;
+
 			}
 			else {
 				break;
