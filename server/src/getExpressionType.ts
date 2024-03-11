@@ -4,6 +4,7 @@ import { regexes } from './regexes';
 import { rfind } from './rfind';
 import { getClassNameFromSource } from './sourceTools';
 import {parse, getSourceOfAst } from './parsing';
+import { ClassInfo } from './ClassInfo';
 
 /**
  * Object representing type information of an expression.
@@ -84,9 +85,9 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 		let objectTypename = (await getExpressionType(source, sourcePos, objectString, context))?.typeName;
 		if (!objectTypename) return null;
 		let objectClassOrPackageInfo = await context.qxClassDb.getClassOrPackageInfo(objectTypename);
-		if (!objectClassOrPackageInfo || objectClassOrPackageInfo?.info == "qxPackage") return null;
+		if (!objectClassOrPackageInfo || objectClassOrPackageInfo.type == "package") return null;
 
-		let objectTypeInfo = objectClassOrPackageInfo.info;
+		let objectTypeInfo: ClassInfo = objectClassOrPackageInfo.info as any;
 		let allMembers = { ...objectTypeInfo.members, ...objectTypeInfo.statics };
 		const memberName = expressionAst.property.name;
 		const memberInfo = allMembers[memberName];
@@ -138,7 +139,7 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 		}
 		//try to lookup in method parameters
 		if (!thisClassName) return null;
-		let thisClassInfo = (await qxClassDb.getClassOrPackageInfo(thisClassName))?.info;
+		let thisClassInfo: ClassInfo | null = (await qxClassDb.getClassOrPackageInfo(thisClassName))?.info as any;
 		if (!thisClassInfo) return null;
 		let methodInfo: any;
 
@@ -158,7 +159,7 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 				if (paramInfo)
 					return { category: "qxObject", typeName: paramInfo.type };
 				else if (methodInfo.overriddenFrom) {
-					let superClassInfo = (await qxClassDb.getClassOrPackageInfo(methodInfo.overriddenFrom))?.info;
+					let superClassInfo: ClassInfo = (await qxClassDb.getClassOrPackageInfo(methodInfo.overriddenFrom))?.info as any;
 					if (superClassInfo) {
 						let superMethodInfo = superClassInfo.members[methodName];
 						if (superMethodInfo) return getParamType(superMethodInfo)

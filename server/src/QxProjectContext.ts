@@ -6,7 +6,7 @@ import { Connection, TextDocuments } from 'vscode-languageserver'
 
 /**
  * A context or state object for the Qooxdoo project.
- * Stores information such as info about the packages/classes in the Qooxdoo project, the source files, references to other symbols (in the future), etc
+ * Stores information such as info about the packages/classes in the Qooxdoo project, the source files, references to other symbols (to be implemented), etc
  */
 export class QxProjectContext {
 	/** The class database, storing information about all the Qooxdoo classes found in the project	 */

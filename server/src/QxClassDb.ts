@@ -1,11 +1,7 @@
 import fs = require('fs/promises');
 import glob = require('glob');
 import path = require("path")
-
-/** Stores information regarding a Qooxdoo class e.g. the methods, properties, and members.
- *  Format is exactly the same as the JSON files found in compiled/xxx/transpiled  
- * */
-export type ClassInfo = any;
+import { ClassInfo } from './ClassInfo';
 
 export interface PackageInfo {
   children: PackageChildType[]
@@ -30,7 +26,7 @@ export class QxClassDb {
     this.classNames.splice(0);    
     this._namesTree.children!.splice(0);
     
-    let allFiles: string[] = await glob.glob('./compiled/*/transpiled/**/*.json', { absolute: true, cwd: path.join(root) });
+    let allFiles: string[] = await glob.glob('./compiled/meta/**/*.json', { absolute: true, cwd: path.join(root) });
 
     for (const filePath of allFiles) {
       await this.readClassJson(filePath);
@@ -60,11 +56,11 @@ export class QxClassDb {
         const packageChildren: PackageChildType[] = [];
         const packageNode = node as PackageNode;
         for (const child of packageNode.children) {
-          let childType: "class" | "package" = child.type == NodeType.CLASS ? "class"
+          let childType = child.type == NodeType.CLASS ? "class"
             : child.type == NodeType.PACKAGE ? "package"
               : "class";
 
-          packageChildren.push({ name: child.name, type: childType });
+          packageChildren.push({ name: child.name, type: childType as any });
         }
 
         return { type: "package", info: { children: packageChildren } };
@@ -77,7 +73,6 @@ export class QxClassDb {
       case NodeType.ROOT:
         throw new Error("Node must not be root!");
     }
-
   }
 
   /**
@@ -101,6 +96,38 @@ export class QxClassDb {
     classNode.jsonFilePath = filePath;
   }
 
+  public async getFullClassInfo(className: string): Promise<ClassInfo> {
+    let classInfo: ClassInfo = (await this.getClassOrPackageInfo(className))!.info as ClassInfo;
+    if (!classInfo) throw new Error("Class info must not be null");
+
+    if (className == "qx.core.Object") return classInfo;
+
+    let superClasses: string[] = [];
+    if (classInfo.superClass) {
+      superClasses.push(classInfo.superClass);
+    }
+
+    if (classInfo.mixins) {
+      superClasses.push(...classInfo.mixins);
+    }
+
+    for (let superClass of superClasses) {
+      let superClassInfo = await this.getFullClassInfo(superClass);
+
+      for (let memberName in superClassInfo.members) {
+        if (!classInfo.members[memberName]) {
+          classInfo.members[memberName] = { ...superClassInfo.members[memberName], inheritedFrom: superClass };
+        }
+      }
+
+      for (let propertyName in superClassInfo.properties) {
+        if (!classInfo.properties[propertyName]) {
+          classInfo.properties[propertyName] = { ...superClassInfo.properties[propertyName], inheritedFrom: superClass };
+        }
+      }
+    }
+    return classInfo;
+  }
 }
 
 /** A tree representing the hierarchy of packages and classes in the project */
