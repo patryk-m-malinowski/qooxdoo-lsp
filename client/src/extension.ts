@@ -53,7 +53,13 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("qxLsp.changeCompiledDir", async () => {
             const chosenFolder = await window.showWorkspaceFolderPick();
             if (!chosenFolder) return;
-            client.sendRequest("changeCompileDir", {uri: chosenFolder.uri});
+            try {
+              await client.sendRequest("changeCompileDir", {uri: chosenFolder.uri});//!!
+            } catch (e) {
+              window.showErrorMessage("Failed to change compiler directory. Message: " + e)
+              return;
+            }
+            window.showInformationMessage("Successfully changed compile directory.");
         })
     );
 
@@ -61,6 +67,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("qxLsp.restartServer", async () => {
             await client.stop();
             await client.start();
+            window.showInformationMessage("Language server successfully restarted");
         })
     );
     // Start the client. This will also launch the server
