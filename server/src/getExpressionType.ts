@@ -109,6 +109,8 @@ export async function getExpressionType(source: string, sourcePos: number, expre
 
 	async function tryCallExpression(): Promise<TypeInfo | null> {
 		if (!["OptionalCallExpression", "CallExpression"].includes(expressionAst.type)) return null;
+    if (!expressionAst.callee.object) return null;
+    
 		let objectExprn: string = getSourceOfAst(expressionAst.callee.object, expression);
 		let objectTypeInfo: TypeInfo | null = await getExpressionType(source, sourcePos, objectExprn, context);
 		if (!objectTypeInfo) return null;

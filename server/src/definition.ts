@@ -6,6 +6,7 @@ import { getObjectExpressionEndingAt } from './sourceTools';
 import { parse, getSourceOfAst, Ast } from './parsing';
 import { strings } from './strings';
 import { getExpressionType } from './getExpressionType';
+import { QxClassDb } from './QxClassDb';
 
 /**
  * Implementation for finding a definition of a symbol
@@ -15,6 +16,8 @@ import { getExpressionType } from './getExpressionType';
  * @returns 
  */
 export async function findDefinitions(source: string, pos: number, context: QxProjectContext) {
+  let qxClassDb: QxClassDb = context.qxClassDb;
+
 	var t = source.substring(pos);
 	let matches = (/\w*/).exec(t);
 	let tilEow = matches?.[0]?.length;
@@ -90,26 +93,28 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 		let type = await getExpressionType(source, pos, objectExpr, context);
 		if (!type) return null;
 
-
-
 		let className = type.typeName;
 		let location;
 
 		//if the member is inherited, look in the class where it was inherited from
 
+    if (!qxClassDb.classExists(className)) return null;
 		let classInfo: ClassInfo | null = await context.qxClassDb.getFullClassInfo(className);
 		if (!classInfo) return null;
 
 		let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
 		if (!memberInfo) { //check if it's a property
 			let matches = /((get)|(set))(\w+)/.exec(memberName);
-			if (matches && matches[4]) {
-				let propertyName: string = strings.firstDown(matches[4]);
-				let propertyInfo: any = classInfo.properties?.[propertyName];
-				location = propertyInfo?.location;
-				className = propertyInfo.inheritedFrom ?? className;
-				if (!location) return null;
-			}
+			if (!matches || !matches[4]) return null;
+
+      let propertyName: string = strings.firstDown(matches[4]);
+      let propertyInfo: any = classInfo.properties?.[propertyName];
+      if (!propertyInfo) return null;
+      
+      location = propertyInfo.location;
+      className = propertyInfo.inheritedFrom ?? className;
+      if (!location) return null;
+			
 		} else {
 			location = memberInfo.location;
 			className = memberInfo.inheritedFrom ?? className;

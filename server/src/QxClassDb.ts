@@ -24,7 +24,7 @@ export class QxClassDb {
    */
   async initialize(root: string): Promise<void> {
     this.classNames.splice(0);    
-    this._namesTree.children!.splice(0);
+    this._namesTree.children?.splice(0);
     
     let allFiles: string[] = await glob.glob('./compiled/meta/**/*.json', { absolute: true, cwd: path.join(root) });
 
@@ -100,10 +100,8 @@ export class QxClassDb {
     let classInfo: ClassInfo = (await this.getClassOrPackageInfo(className))!.info as ClassInfo;
     if (!classInfo) throw new Error("Class info must not be null");
 
-    if (className == "qx.core.Object") return classInfo;
-
     let superClasses: string[] = [];
-    if (classInfo.superClass) {
+    if (classInfo.superClass && classInfo.superClass != "Object") {
       superClasses.push(classInfo.superClass);
     }
 
@@ -116,13 +114,15 @@ export class QxClassDb {
 
       for (let memberName in superClassInfo.members) {
         if (!classInfo.members[memberName]) {
-          classInfo.members[memberName] = { ...superClassInfo.members[memberName], inheritedFrom: superClass };
+          const inheritedFrom = superClassInfo.members[memberName].inheritedFrom ?? superClass;
+          classInfo.members[memberName] = { ...superClassInfo.members[memberName], inheritedFrom: inheritedFrom };
         }
       }
 
       for (let propertyName in superClassInfo.properties) {
         if (!classInfo.properties[propertyName]) {
-          classInfo.properties[propertyName] = { ...superClassInfo.properties[propertyName], inheritedFrom: superClass };
+          const inheritedFrom = superClassInfo.properties[propertyName].inheritedFrom ?? superClass;
+          classInfo.properties[propertyName] = { ...superClassInfo.properties[propertyName], inheritedFrom: inheritedFrom };
         }
       }
     }
