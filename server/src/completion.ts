@@ -21,12 +21,9 @@ export async function getCompletionSuggestions(source: string, offset: number, c
 	let dotPos = rfind(source, offset, `(\\?)?\\.(${regexes.IDENTIFIER})?`, true);
 	const exprn: string | null = dotPos && getObjectExpressionEndingAt(source, dotPos.start);
 
-	if (!exprn) {
-		let classNames: CompletionItem[] = qxClassDb.classNames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
-		let allTokens = await getTokensForEverything(qxClassDb);
-		return classNames.concat(allTokens);
-	}
-		
+	if (!exprn)
+		return qxClassDb.classNames.map(classname => { return { label: classname, kind: CompletionItemKind.Class }; });
+
 	if (!dotPos) throw new Error("Should not call here! Please fix bug!");
 
 	let typeInfo = await getExpressionType(source, dotPos.start, exprn, context);
@@ -47,7 +44,11 @@ export async function getCompletionSuggestions(source: string, offset: number, c
 			completionItems.push({ label: packageChild.name, kind: packageChild.type == "class" ? CompletionItemKind.Class : CompletionItemKind.Module });
 		}
 	} else {
-		const addCompletionItem = (memberName: string, member: any) => {
+		let fullClassInfo: ClassInfo = await qxClassDb.getFullClassInfo(classOrPackageName);//!!
+		let allMembers = { ...fullClassInfo.statics, ...fullClassInfo.members };
+
+		for (let memberName in allMembers) {
+			let member = allMembers[memberName];
 			let kind: CompletionItemKind = CompletionItemKind.Text;
 			switch (member.type) {
 				case "function":
@@ -66,17 +67,9 @@ export async function getCompletionSuggestions(source: string, offset: number, c
 				documentation: member?.jsdoc?.["@description"]?.[0]?.body
 			})
 		}
-		const classInfo: ClassInfo = classOrPackageInfo.info as ClassInfo;
-		if (classInfo.members) {
-			Object.keys(classInfo.members).forEach(memberName => addCompletionItem(memberName, classInfo.members[memberName]));
-		}
-		if (classInfo.statics) {
-			Object.keys(classInfo.statics).forEach(memberName => addCompletionItem(memberName, classInfo.statics[memberName]));
-		}
 	}
 
-	let allTokens: CompletionItem[] = await getTokensForEverything(qxClassDb);
-	return completionItems.concat(allTokens);
+	return completionItems;
 }
 
 async function getTokensForEverything(classDb: QxClassDb) {
@@ -101,7 +94,7 @@ async function getTokensForEverything(classDb: QxClassDb) {
 			allMembers.add('change' + strings.firstUp(propertyName));
 		}
 
-		for (let memberName in {...classInfo.members, ...classInfo.statics}) {
+		for (let memberName in { ...classInfo.members, ...classInfo.statics }) {
 			allMembers.add(memberName);
 		}
 	}

@@ -44,7 +44,7 @@ export class QxClassDb {
    * @param classOrPackageName Fully qualified name of class or package
    * @returns 
    */
-public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: "class" | "package"; info: ClassInfo | PackageInfo; } | null> {
+  public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: "class" | "package"; info: ClassInfo | PackageInfo; } | null> {
     if (!this._namesTree.containsNode(classOrPackageName)) return null;
 
     let node = this._namesTree.getNode(classOrPackageName);
@@ -70,7 +70,6 @@ public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: 
       case NodeType.ROOT:
         throw new Error("Node must not be root!");
     }
-
   }
 
   /**
@@ -92,6 +91,39 @@ public async getClassOrPackageInfo(classOrPackageName: string): Promise<{ type: 
 
     let classNode = node as ClassNode;
     classNode.jsonFilePath = filePath;
+  }
+
+  public async getFullClassInfo(className: string): Promise<ClassInfo> {
+    let classInfo: ClassInfo = (await this.getClassOrPackageInfo(className))!.info as ClassInfo;
+    if (!classInfo) throw new Error("Class info must not be null");
+
+    if (className == "qx.core.Object") return classInfo;
+
+    let superClasses: string[] = [];
+    if (classInfo.superClass) {
+      superClasses.push(classInfo.superClass);
+    }
+
+    if (classInfo.mixins) {
+      superClasses.push(...classInfo.mixins);
+    }
+
+    for (let superClass of superClasses) {
+      let superClassInfo = await this.getFullClassInfo(superClass);
+
+      for (let memberName in superClassInfo.members) {
+        if (!classInfo.members[memberName]) {
+          classInfo.members[memberName] = { ...superClassInfo.members[memberName], inheritedFrom: superClass };
+        }
+      }
+
+      for (let propertyName in superClassInfo.properties) {
+        if (!classInfo.properties[propertyName]) {
+          classInfo.properties[propertyName] = { ...superClassInfo.properties[propertyName], inheritedFrom: superClass };
+        }
+      }
+    }
+    return classInfo;
   }
 }
 

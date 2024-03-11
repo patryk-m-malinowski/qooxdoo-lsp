@@ -90,35 +90,29 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 		let type = await getExpressionType(source, pos, objectExpr, context);
 		if (!type) return null;
 
+
+
 		let className = type.typeName;
-		let location: any;
-		let classInfo: ClassInfo | null = null;
+		let location;
 
 		//if the member is inherited, look in the class where it was inherited from
-		while (true) {
-			if (!className) return null;
-			classInfo = (await context.qxClassDb.getClassOrPackageInfo(className))?.info as any;
-			if (!classInfo) return null;
-			let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
-			location = memberInfo?.location;
-			if (!location) {
-				let matches = /((get)|(set))(\w+)/.exec(memberName);
-				if (matches && matches[4]) {
-					let propertyName: string = strings.firstDown(matches[4]);
-					let propertyInfo: any = classInfo.properties?.[propertyName];
-					location = propertyInfo?.location;
-					if (location) break;
-				}
-			}
 
-			if (!location) {
-				className = memberInfo?.overriddenFrom ?? classInfo?.superClass!;
+		let classInfo: ClassInfo | null = await context.qxClassDb.getFullClassInfo(className);
+		if (!classInfo) return null;
 
+		let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
+		if (!memberInfo) { //check if it's a property
+			let matches = /((get)|(set))(\w+)/.exec(memberName);
+			if (matches && matches[4]) {
+				let propertyName: string = strings.firstDown(matches[4]);
+				let propertyInfo: any = classInfo.properties?.[propertyName];
+				location = propertyInfo?.location;
+				className = propertyInfo.inheritedFrom ?? className;
+				if (!location) return null;
 			}
-			else {
-				break;
-			}
-
+		} else {
+			location = memberInfo.location;
+			className = memberInfo.inheritedFrom ?? className;
 		}
 
 		let sourceUri = await context.getSourceUriForClass(className);
