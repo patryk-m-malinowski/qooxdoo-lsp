@@ -1,7 +1,8 @@
 import fs = require('fs/promises');
 import glob = require('glob');
 import path = require("path")
-import { ClassInfo } from './ClassInfo';
+import { ClassInfo, MemberInfo } from './ClassInfo';
+import { strings } from './strings';
 
 export interface PackageInfo {
   children: PackageChildType[]
@@ -23,9 +24,9 @@ export class QxClassDb {
    * @param root The directory to get the qooxdoo files from.
    */
   async initialize(root: string): Promise<void> {
-    this.classNames.splice(0);    
+    this.classNames.splice(0);
     this._namesTree.children?.splice(0);
-    
+
     let allFiles: string[] = await glob.glob('./compiled/meta/**/*.json', { absolute: true, cwd: path.join(root) });
 
     for (const filePath of allFiles) {
@@ -96,20 +97,42 @@ export class QxClassDb {
     classNode.jsonFilePath = filePath;
   }
 
+  /**
+   * Returns full information about a class, including inherited members.
+   * Members contain get, set, and reset methods for properties as well.
+   * 
+   * @TODO include inherited properties
+   * 
+   * @param className 
+   * @returns 
+   */
   public async getFullClassInfo(className: string): Promise<ClassInfo> {
     let classInfo: ClassInfo = (await this.getClassOrPackageInfo(className))!.info as ClassInfo;
     if (!classInfo) throw new Error("Class info must not be null");
 
-    let superClasses: string[] = [];
+    if (classInfo.properties) {
+      for (let [propertyName, propertyInfo] of Object.entries(classInfo.properties)) {
+        let getterOrSetterInfo: MemberInfo = {
+          type: "function",
+          location: propertyInfo.location,
+          mixin: propertyInfo.mixin,
+          access: "public",
+        };
+
+        let upname: string = strings.firstUp(propertyName);
+
+        classInfo.members["get" + upname] = getterOrSetterInfo;
+        classInfo.members["set" + upname] = getterOrSetterInfo;
+        classInfo.members["reset" + upname] = getterOrSetterInfo;
+      }
+    }
+
+    let superClass: string | undefined = undefined;
     if (classInfo.superClass && classInfo.superClass != "Object") {
-      superClasses.push(classInfo.superClass);
+      superClass = classInfo.superClass;
     }
 
-    if (classInfo.mixins) {
-      superClasses.push(...classInfo.mixins);
-    }
-
-    for (let superClass of superClasses) {
+    if (superClass) {
       let superClassInfo = await this.getFullClassInfo(superClass);
 
       for (let memberName in superClassInfo.members) {
@@ -118,14 +141,17 @@ export class QxClassDb {
           classInfo.members[memberName] = { ...superClassInfo.members[memberName], inheritedFrom: inheritedFrom };
         }
       }
-
-      for (let propertyName in superClassInfo.properties) {
-        if (!classInfo.properties[propertyName]) {
-          const inheritedFrom = superClassInfo.properties[propertyName].inheritedFrom ?? superClass;
-          classInfo.properties[propertyName] = { ...superClassInfo.properties[propertyName], inheritedFrom: inheritedFrom };
-        }
-      }
     }
+
+    if (classInfo.isSingleton) {
+      classInfo.members["getInstance"] = {
+        type: "function",
+        location: classInfo.location,
+        access: "public",
+        jsdoc: { "@description": [{ body: "Returns the singleton instance of this class" }] }
+      };
+    }
+
     return classInfo;
   }
 }

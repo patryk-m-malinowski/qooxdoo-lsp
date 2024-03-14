@@ -9,6 +9,7 @@ export interface ClassInfo {
 	superClass?: string,
 	mixins?: string[],
 	construct: MethodInfo,
+	isSingleton?: boolean,
 };
 
 export interface MemberInfo {
@@ -18,6 +19,7 @@ export interface MemberInfo {
 	type?: "function" | "variable",
 	overriddenFrom?: string,
 	inheritedFrom?: string,
+	mixin?: string,
 }
 
 export interface MethodInfo extends MemberInfo {

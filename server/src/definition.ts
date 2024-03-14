@@ -16,7 +16,7 @@ import { QxClassDb } from './QxClassDb';
  * @returns 
  */
 export async function findDefinitions(source: string, pos: number, context: QxProjectContext) {
-  let qxClassDb: QxClassDb = context.qxClassDb;
+	let qxClassDb: QxClassDb = context.qxClassDb;
 
 	var t = source.substring(pos);
 	let matches = (/\w*/).exec(t);
@@ -27,49 +27,6 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 	let expr = getObjectExpressionEndingAt(source, endOfWordPos);
 	if (!expr) return null;
 	if (expr.startsWith("new ")) expr = expr.substring("new ".length);
-
-	//check for getwidget
-	let getWidgetMatch = rfind(source, pos, /\.get((widget)|(childcontrol)|(qxobject))\("\w+/gi);
-	if (getWidgetMatch && getWidgetMatch.end == pos) {
-		let widgetId = expr;
-		let getWidgetExprn = getObjectExpressionEndingAt(source, getWidgetMatch.start);
-		let objectClassName = getWidgetExprn && (await getExpressionType(source, pos, getWidgetExprn, context))?.typeName
-		let searchDocumentClassInfo: ClassInfo | null = objectClassName == null ? null : (await context.qxClassDb.getClassOrPackageInfo(objectClassName))?.info as any;
-		let searchDocumentUri = objectClassName == null ? null : await context.getSourceUriForClass(objectClassName);
-		let searchDocument = searchDocumentUri == null ? null : context.projectDocumentsManager.get(searchDocumentUri);
-		let searchSource = searchDocument?.getText();
-		if (!searchSource) return null;
-
-		/**class info json */
-		while (true) {
-			if (!(searchSource && searchDocument?.uri)) throw new Error();
-
-			let caseMatch = searchSource.search(`case "${widgetId}":`);
-			if (caseMatch != -1) {
-				let caseLocation = searchDocument.positionAt(caseMatch);
-				return [
-					Location.create(searchDocument.uri, {
-						start: {
-							line: caseLocation.line,
-							character: caseLocation.character
-						},
-						end: caseLocation
-					})
-				];
-			} else {
-				//go to parent class
-				let superClass = searchDocumentClassInfo?.superClass;
-				if (!superClass) break;
-				const classUri = await context.getSourceUriForClass(superClass);
-				if (!classUri) return null;
-				const searchDocumentUri = classUri; //todo improve this!
-				const searchDocumentMaybe: TextDocument | null = context.projectDocumentsManager.get(searchDocumentUri) ?? null;
-				if (!searchDocumentMaybe) return null;
-				searchDocument = searchDocumentMaybe;
-				searchSource = searchDocument.getText();
-			}
-		}
-	}
 
 	//check if it's a class
 	var u = (await context.qxClassDb.getClassOrPackageInfo(expr));
@@ -94,33 +51,19 @@ export async function findDefinitions(source: string, pos: number, context: QxPr
 		if (!type) return null;
 
 		let className = type.typeName;
-		let location;
-
-		//if the member is inherited, look in the class where it was inherited from
-
-    if (!qxClassDb.classExists(className)) return null;
+		if (!qxClassDb.classExists(className)) return null;
 		let classInfo: ClassInfo | null = await context.qxClassDb.getFullClassInfo(className);
-		if (!classInfo) return null;
 
 		let memberInfo = classInfo.members?.[memberName] ?? classInfo.statics?.[memberName];
-		if (!memberInfo) { //check if it's a property
-			let matches = /((get)|(set))(\w+)/.exec(memberName);
-			if (!matches || !matches[4]) return null;
 
-      let propertyName: string = strings.firstDown(matches[4]);
-      let propertyInfo: any = classInfo.properties?.[propertyName];
-      if (!propertyInfo) return null;
-      
-      location = propertyInfo.location;
-      className = propertyInfo.inheritedFrom ?? className;
-      if (!location) return null;
-			
-		} else {
-			location = memberInfo.location;
-			className = memberInfo.inheritedFrom ?? className;
+		if (!memberInfo) {
+			return null;
 		}
 
-		let sourceUri = await context.getSourceUriForClass(className);
+		let location = memberInfo.location;
+		let sourceClass = memberInfo.mixin ?? memberInfo.inheritedFrom ?? className;
+
+		let sourceUri = await context.getSourceUriForClass(sourceClass);
 		if (!sourceUri) return null;
 		return [
 			Location.create(sourceUri, {
