@@ -168,8 +168,20 @@ function startServer() {
 		documentSettings.delete(e.document.uri);
 	});
 
+	/**
+	 * Wraps a function, ensuring exceptions are caught and logged
+	 * @param fn 
+	 * @returns 
+	 */
+	const wrapMiddleware = (fn: Function) => (...args: any[]) =>
+		fn(...args).catch((e: Error) => {
+			connection.console.error("Error processing request: " + e);
+			return null;
+		});
+
+
 	connection.onCompletion(
-		async (completionInfo: CompletionParams): Promise<CompletionItem[] | null> => {
+		wrapMiddleware(async (completionInfo: CompletionParams): Promise<CompletionItem[] | null> => {
 			let document: TextDocument | undefined = documents.get(completionInfo.textDocument.uri);
 			if (!document) throw new Error("Text document is undefined!");
 
@@ -177,8 +189,7 @@ function startServer() {
 			let source: string = document.getText();
 
 			return getCompletionSuggestions(source, offset, context);
-
-		}
+		})
 	);
 
 	// This handler resolves additional information for the item selected in
@@ -200,27 +211,25 @@ function startServer() {
 	});
 
 
-	connection.onSignatureHelp(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
+	connection.onSignatureHelp(
+		wrapMiddleware(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
+			let document = documents.get(params.textDocument.uri);
+			if (!document) throw new Error("Text document is undefined!");
+			let caretIndex: number = document.offsetAt(params.position);
 
-		let document = documents.get(params.textDocument.uri);
-		if (!document) throw new Error("Text document is undefined!");
-		let caretIndex: number = document.offsetAt(params.position);
+			let source: string = document.getText();
+			return getSignatureHint(source, caretIndex, context);
+		}));
 
-		let source: string = document.getText();
-		return getSignatureHint(source, caretIndex, context);
+	connection.onDefinition(
+		wrapMiddleware(async (params: DefinitionParams): Promise<Location[] | null> => {
+			let document = documents.get(params.textDocument.uri);
+			if (!document) throw new Error("Text document is undefined!");
+			let caretIndex: integer = document.offsetAt(params.position);
 
-	})
-	connection.onDefinition(async (params: DefinitionParams): Promise<Location[] | null> => {
-		let document = documents.get(params.textDocument.uri);
-		if (!document) throw new Error("Text document is undefined!");
-		let caretIndex: integer = document.offsetAt(params.position);
-
-		let source: string = document.getText();
-		return findDefinitions(source, caretIndex, context);
-
-		//find number of characters til the end of word
-
-	});
+			let source: string = document.getText();
+			return findDefinitions(source, caretIndex, context);
+		}));
 
 	// Make the text document manager listen on the connection
 	// for open, change and close text document events
