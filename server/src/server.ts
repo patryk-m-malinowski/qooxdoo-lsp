@@ -1,27 +1,27 @@
 const fs = require('fs').promises;
 import {
-  TextDocument
+	TextDocument
 } from 'vscode-languageserver-textdocument';
 import {
-  CompletionItem,
-  CompletionParams,
-  DefinitionParams,
-  DidChangeConfigurationNotification,
-  DidChangeWatchedFilesNotification,
-  DidChangeWatchedFilesParams,
-  FileChangeType,
-  FileEvent,
-  InitializeParams,
-  InitializeResult,
-  Location,
-  ProposedFeatures,
-  SignatureHelp,
-  SignatureHelpParams,
-  TextDocumentSyncKind,
-  TextDocuments,
-  WorkspaceFolder,
-  createConnection,
-  integer
+	CompletionItem,
+	CompletionParams,
+	DefinitionParams,
+	DidChangeConfigurationNotification,
+	DidChangeWatchedFilesNotification,
+	DidChangeWatchedFilesParams,
+	FileChangeType,
+	FileEvent,
+	InitializeParams,
+	InitializeResult,
+	Location,
+	ProposedFeatures,
+	SignatureHelp,
+	SignatureHelpParams,
+	TextDocumentSyncKind,
+	TextDocuments,
+	WorkspaceFolder,
+	createConnection,
+	integer
 } from 'vscode-languageserver/node';
 import { URI, uriToFsPath } from 'vscode-uri/lib/umd/uri';
 import { QxProjectContext } from './QxProjectContext';
@@ -32,202 +32,202 @@ import { getSignatureHint } from './signatureHelp';
 
 function startServer() {
 
-  // Create a connection for the server, using Node's IPC as a transport.
-  // Also include all preview / proposed LSP features.
-  const connection = createConnection(ProposedFeatures.all);
+	// Create a connection for the server, using Node's IPC as a transport.
+	// Also include all preview / proposed LSP features.
+	const connection = createConnection(ProposedFeatures.all);
 
-  // Create a simple text document manager.
-  const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
-  const context: QxProjectContext = new QxProjectContext(connection, documents);
-  let hasConfigurationCapability = false;
-  let hasWorkspaceFolderCapability = false;
-  let hasDiagnosticRelatedInformationCapability = false;
-
-
-  connection.onInitialize((params: InitializeParams) => {
-    const capabilities = params.capabilities;
-
-    // Does the client support the `workspace/configuration` request?
-    // If not, we fall back using global settings.
-    hasConfigurationCapability = !!(
-      capabilities.workspace && !!capabilities.workspace.configuration
-    );
-    hasWorkspaceFolderCapability = !!(
-      capabilities.workspace && !!capabilities.workspace.workspaceFolders
-    );
-    hasDiagnosticRelatedInformationCapability = !!(
-      capabilities.textDocument &&
-      capabilities.textDocument.publishDiagnostics &&
-      capabilities.textDocument.publishDiagnostics.relatedInformation
-    );
-
-    const result: InitializeResult = {
-      capabilities: {
-        textDocumentSync: TextDocumentSyncKind.Incremental,
-        // Tell the client that this server supports code completion.
-        completionProvider: {
-          resolveProvider: true,
-          triggerCharacters: ["."]
-
-        },
-
-        signatureHelpProvider: {
-          triggerCharacters: ['(', ',']
-        },
-
-        definitionProvider: {
-
-        }
-      }
-    };
-    if (hasWorkspaceFolderCapability) {
-      result.capabilities.workspace = {
-        workspaceFolders: {
-          supported: true
-        }
-      };
-    }
-    return result;
-  });
+	// Create a simple text document manager.
+	const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+	const context: QxProjectContext = new QxProjectContext(connection, documents);
+	let hasConfigurationCapability = false;
+	let hasWorkspaceFolderCapability = false;
+	let hasDiagnosticRelatedInformationCapability = false;
 
 
-  connection.onInitialized(() => {
-    if (hasConfigurationCapability) {
-      // Register for all configuration changes.
-      connection.client.register(DidChangeConfigurationNotification.type, undefined);
-      connection.client.register(DidChangeWatchedFilesNotification.type, undefined);
-    }
-    if (hasWorkspaceFolderCapability) {
-      connection.workspace.onDidChangeWorkspaceFolders(_event => {
-        connection.console.log('Workspace folder change event received.');
-      });
-    }
+	connection.onInitialize((params: InitializeParams) => {
+		const capabilities = params.capabilities;
 
-    const getQxProjDir = async (): Promise<string | null> => {
-      if (!connection) throw new Error("Connection cannot be null");
-      let folders = await connection.workspace.getWorkspaceFolders();
-      if (!folders) return null;
-      for (var f = 0; f < folders?.length; f++) {
-        let folder: WorkspaceFolder = folders[f];
-        let path = uriToPath(folder.uri);
-        let files = await fs.readdir(path);
-        if (files.indexOf("compile.json") >= 0) {
-          return uriToPath(folder.uri);
-        }
-      }
-      return null;
-    }
+		// Does the client support the `workspace/configuration` request?
+		// If not, we fall back using global settings.
+		hasConfigurationCapability = !!(
+			capabilities.workspace && !!capabilities.workspace.configuration
+		);
+		hasWorkspaceFolderCapability = !!(
+			capabilities.workspace && !!capabilities.workspace.workspaceFolders
+		);
+		hasDiagnosticRelatedInformationCapability = !!(
+			capabilities.textDocument &&
+			capabilities.textDocument.publishDiagnostics &&
+			capabilities.textDocument.publishDiagnostics.relatedInformation
+		);
 
-    const tryInitClassDb = async () => {
-      const mainProjDir = await getQxProjDir();
-      if (mainProjDir !== null) {
-        context.qxClassDb.initialize(mainProjDir);
-      } else setTimeout(tryInitClassDb, 1000);
-    }
+		const result: InitializeResult = {
+			capabilities: {
+				textDocumentSync: TextDocumentSyncKind.Incremental,
+				// Tell the client that this server supports code completion.
+				completionProvider: {
+					resolveProvider: true,
+					triggerCharacters: ["."]
 
-    tryInitClassDb();
-  });
+				},
 
-  // The example settings
-  interface ExampleSettings {
-    maxNumberOfProblems: number;
-  }
+				signatureHelpProvider: {
+					triggerCharacters: ['(', ',']
+				},
 
-  // The global settings, used when the `workspace/configuration` request is not supported by the client.
-  // Please note that this is not the case when using this server with the client provided in this example
-  // but could happen with other clients.
-  const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
-  let globalSettings: ExampleSettings = defaultSettings;
+				definitionProvider: {
 
-  // Cache the settings of all open documents
-  const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
+				}
+			}
+		};
+		if (hasWorkspaceFolderCapability) {
+			result.capabilities.workspace = {
+				workspaceFolders: {
+					supported: true
+				}
+			};
+		}
+		return result;
+	});
 
 
-  connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
-    params.changes.forEach((change: FileEvent) => {
-      if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
-        context.qxClassDb.readClassJson(uriToPath(change.uri));
-    })
-  })
+	connection.onInitialized(() => {
+		if (hasConfigurationCapability) {
+			// Register for all configuration changes.
+			connection.client.register(DidChangeConfigurationNotification.type, undefined);
+			connection.client.register(DidChangeWatchedFilesNotification.type, undefined);
+		}
+		if (hasWorkspaceFolderCapability) {
+			connection.workspace.onDidChangeWorkspaceFolders(_event => {
+				connection.console.log('Workspace folder change event received.');
+			});
+		}
 
-  connection.onDidChangeConfiguration(change => {
-    if (hasConfigurationCapability) {
-      // Reset all cached document settings
-      documentSettings.clear();
-    } else {
-      globalSettings = <ExampleSettings>(
-        (change.settings.languageServerExample || defaultSettings)
-      );
-    }
+		const getQxProjDir = async (): Promise<string | null> => {
+			if (!connection) throw new Error("Connection cannot be null");
+			let folders = await connection.workspace.getWorkspaceFolders();
+			if (!folders) return null;
+			for (var f = 0; f < folders?.length; f++) {
+				let folder: WorkspaceFolder = folders[f];
+				let path = uriToPath(folder.uri);
+				let files = await fs.readdir(path);
+				if (files.indexOf("compile.json") >= 0) {
+					return uriToPath(folder.uri);
+				}
+			}
+			return null;
+		}
 
-  });
+		const tryInitClassDb = async () => {
+			const mainProjDir = await getQxProjDir();
+			if (mainProjDir !== null) {
+				context.qxClassDb.initialize(mainProjDir);
+			} else setTimeout(tryInitClassDb, 1000);
+		}
 
+		tryInitClassDb();
+	});
 
-  // Only keep settings for open documents
-  documents.onDidClose(e => {
-    documentSettings.delete(e.document.uri);
-  });
+	// The example settings
+	interface ExampleSettings {
+		maxNumberOfProblems: number;
+	}
 
-  connection.onCompletion(
-    async (completionInfo: CompletionParams): Promise<CompletionItem[] | null> => {
-      let document: TextDocument | undefined = documents.get(completionInfo.textDocument.uri);
-      if (!document) throw new Error("Text document is undefined!");
+	// The global settings, used when the `workspace/configuration` request is not supported by the client.
+	// Please note that this is not the case when using this server with the client provided in this example
+	// but could happen with other clients.
+	const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
+	let globalSettings: ExampleSettings = defaultSettings;
 
-      let offset: number = document.offsetAt(completionInfo.position);
-      let source: string = document.getText();
-
-      return getCompletionSuggestions(source, offset, context);
-
-    }
-  );
-
-  // This handler resolves additional information for the item selected in
-  // the completion list.
-  connection.onCompletionResolve(
-    (item: CompletionItem): CompletionItem => {
-      return item;
-    }
-  );
-
-
-  connection.onRequest("changeCompileDir", async (params: { uri: URI }) => {
-    const dirPath = uriToFsPath(params.uri, false);
-    try {
-      context.qxClassDb.initialize(dirPath);
-    } catch (e) {
-      connection.sendNotification("Error processing compiled path.");
-    }
-  });
+	// Cache the settings of all open documents
+	const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
 
-  connection.onSignatureHelp(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
+	connection.onDidChangeWatchedFiles((params: DidChangeWatchedFilesParams) => {
+		params.changes.forEach((change: FileEvent) => {
+			if (change.type == FileChangeType.Changed || change.type == FileChangeType.Created)
+				context.qxClassDb.readClassJson(uriToPath(change.uri));
+		})
+	})
 
-    let document = documents.get(params.textDocument.uri);
-    if (!document) throw new Error("Text document is undefined!");
-    let caretIndex: number = document.offsetAt(params.position);
+	connection.onDidChangeConfiguration(change => {
+		if (hasConfigurationCapability) {
+			// Reset all cached document settings
+			documentSettings.clear();
+		} else {
+			globalSettings = <ExampleSettings>(
+				(change.settings.languageServerExample || defaultSettings)
+			);
+		}
 
-    let source: string = document.getText();
-    return getSignatureHint(source, caretIndex, context);
+	});
 
-  })
-  connection.onDefinition(async (params: DefinitionParams): Promise<Location[] | null> => {
-    let document = documents.get(params.textDocument.uri);
-    if (!document) throw new Error("Text document is undefined!");
-    let caretIndex: integer = document.offsetAt(params.position);
 
-    let source: string = document.getText();
-    return findDefinitions(source, caretIndex, context);
+	// Only keep settings for open documents
+	documents.onDidClose(e => {
+		documentSettings.delete(e.document.uri);
+	});
 
-    //find number of characters til the end of word
+	connection.onCompletion(
+		async (completionInfo: CompletionParams): Promise<CompletionItem[] | null> => {
+			let document: TextDocument | undefined = documents.get(completionInfo.textDocument.uri);
+			if (!document) throw new Error("Text document is undefined!");
 
-  });
+			let offset: number = document.offsetAt(completionInfo.position);
+			let source: string = document.getText();
 
-  // Make the text document manager listen on the connection
-  // for open, change and close text document events
-  documents.listen(connection);
+			return getCompletionSuggestions(source, offset, context);
 
-  // Listen on the connection
-  connection.listen();
+		}
+	);
+
+	// This handler resolves additional information for the item selected in
+	// the completion list.
+	connection.onCompletionResolve(
+		(item: CompletionItem): CompletionItem => {
+			return item;
+		}
+	);
+
+
+	connection.onRequest("changeCompileDir", async (params: { uri: URI }) => {
+		const dirPath = uriToFsPath(params.uri, false);
+		try {
+			context.qxClassDb.initialize(dirPath);
+		} catch (e) {
+			connection.sendNotification("Error processing compiled path.");
+		}
+	});
+
+
+	connection.onSignatureHelp(async (params: SignatureHelpParams): Promise<SignatureHelp | null> => {
+
+		let document = documents.get(params.textDocument.uri);
+		if (!document) throw new Error("Text document is undefined!");
+		let caretIndex: number = document.offsetAt(params.position);
+
+		let source: string = document.getText();
+		return getSignatureHint(source, caretIndex, context);
+
+	})
+	connection.onDefinition(async (params: DefinitionParams): Promise<Location[] | null> => {
+		let document = documents.get(params.textDocument.uri);
+		if (!document) throw new Error("Text document is undefined!");
+		let caretIndex: integer = document.offsetAt(params.position);
+
+		let source: string = document.getText();
+		return findDefinitions(source, caretIndex, context);
+
+		//find number of characters til the end of word
+
+	});
+
+	// Make the text document manager listen on the connection
+	// for open, change and close text document events
+	documents.listen(connection);
+
+	// Listen on the connection
+	connection.listen();
 }
 
 
